@@ -20,6 +20,16 @@ históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de lo
 - **Nombre de las tareas de una Revisión** (`revision.tareas[].tarea_nombre`, ruta 14): no se
   guarda en la base. Sale del maestro del campo y, si la tarea no está ahí, de las Líneas del
   mes (la misma regla del Detalle). La 004 no cambia. Lo aplican A8 y A9.
+- **A4b. Par: igualar la consulta del campo a la de Power BI** (el usuario pasó la consulta que usa
+  Power BI, 2026-10-14). Coinciden las tres planillas, `estado <> 9`, el tractor 1 de
+  pulverización (la nodriza no se factura) y las medidas de maquinaria y tareas manuales. Única
+  diferencia: en pulverización Power BI toma `unidades = 0`; la nuestra leía `pdpulve.unidades`.
+  Se pasa a `0 AS unidades`. Confirmado con el usuario: el mes sale de la fecha de la tarea
+  (`fecha`, no `date_time`), y `tareas.unidad` no se usa para facturar (sigue la Unidad sugerida
+  del BK #94). Riesgo para F5: un valor con coma decimal en el campo, Power BI puede leerlo y el
+  REGEXP lo cuenta 0.
+- **Comentario de la Revisión** (A9): se recortan los espacios de los bordes antes de medir el
+  largo, igual que el front (FA4).
 
 ## Antes de empezar: premisas que no se cumplen
 
@@ -399,7 +409,7 @@ Descartado: comparar dentro de la app. Mostraría una medida que el producto no 
 
 **14. Detalle**
 - Respuesta:
-  - `cliente_id`, `cliente_nombre`, `mes`, `umbral_pct` y `leido_en`;
+  - `cliente_id`, `cliente_nombre`, `mes`, `umbral_pct`, `mes_corte` y `leido_en` (`mes_corte` lo pide el aviso "Antes del corte" del boceto aprobado; sumado al ejecutar FA4);
   - `estados`, `diferencia_revisada` y `se_puede_revisar`;
   - `comprobantes`;
   - `grupos`;
