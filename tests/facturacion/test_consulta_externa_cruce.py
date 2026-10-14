@@ -149,7 +149,7 @@ def test_las_bajas_se_filtran_en_cabecera_y_en_registro(query):
 def test_las_cuatro_medidas_pasan_por_regexp_antes_de_convertir(query):
     sql = _sql(query)
     for campo in ("pregistros.trancadas1", "pregistros.hsjornal1",
-                  "pregistros.hsmaquina1", "pdpulve.unidades",
+                  "pregistros.hsmaquina1",
                   "mregistros.hsjornal", "mregistros.hsmaquina", "mregistros.unidades",
                   "tregistros.hsjornal", "tregistros.unidades"):
         assert f"CASE WHEN TRIM({campo}) REGEXP '^[0-9]*[.]?[0-9]+$'" in sql, campo
@@ -157,9 +157,14 @@ def test_las_cuatro_medidas_pasan_por_regexp_antes_de_convertir(query):
 
 
 @pytest.mark.parametrize("query", CONSULTAS, ids=IDS)
-def test_pulverizacion_es_una_fila_por_parte_con_las_unidades_de_la_cabecera_una_vez(query):
+def test_pulverizacion_es_una_fila_por_parte_con_unidades_en_cero(query):
     sql = _sql(query)
-    assert "MAX(CASE WHEN TRIM(pdpulve.unidades)" in sql
+    # Como la consulta de Power BI: en pulverización las unidades son 0 y no
+    # se lee la columna de la cabecera.
+    pulverizacion = sql.split("UNION ALL")[0]
+    assert "FROM laa_pdpulverizadas pdpulve" in pulverizacion
+    assert "0 AS unidades" in pulverizacion
+    assert "pdpulve.unidades" not in sql
     assert "SUM(CASE WHEN TRIM(pregistros.trancadas1)" in sql
     assert "GROUP BY pdpulve.id" in sql
     # Maquinaria y tareas manuales, por cabecera y tarea.

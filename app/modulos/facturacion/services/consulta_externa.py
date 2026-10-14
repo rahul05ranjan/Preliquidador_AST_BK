@@ -98,10 +98,11 @@ QUERY_EMPRESAS = text(
 
 # ─── Los partes del campo, para el Cruce ────────────────────────────────────
 # Una fila por (parte, tarea), copiada de las ramas de QUERY_PRINCIPAL de
-# Preliquidación (ADR-0013: se copia, no se importa), con lo que lee Power BI:
+# Preliquidación (ADR-0013: se copia, no se importa). Las medidas siguen la
+# consulta de Power BI:
 #   PULVERIZADA  sólo el tractor 1 (trancadas1, hsjornal1, hsmaquina1), sumado
-#                por parte; la tarea y `unidades` son de la cabecera, así que
-#                `unidades` cuenta una sola vez (MAX)
+#                por parte; la tarea es de la cabecera. Las unidades son 0,
+#                como en Power BI: no se lee la columna de la cabecera
 #   MAQUINARIA y TAREAS MANUALES  la tarea es de cada registro: se suma por
 #                cabecera y tarea
 # Sin la planilla de cosecha (no entra en el Cruce) ni el tractor 2.
@@ -138,7 +139,7 @@ def _partes_del_campo(filtro_cliente: bool) -> str:
          MAX(supervisor.name) AS supervisor,
          SUM({_medida("pregistros.hsjornal1")}) AS horas_jornal,
          SUM({_medida("pregistros.hsmaquina1")}) AS horas_maquina,
-         MAX({_medida("pdpulve.unidades")}) AS unidades,
+         0 AS unidades,
          SUM({_medida("pregistros.trancadas1")}) AS tancadas
   FROM laa_pdpulverizadas pdpulve
   INNER JOIN laa_pdpulverizadasregistros pregistros ON pregistros.parent_id = pdpulve.id AND pregistros.estado <> 9
