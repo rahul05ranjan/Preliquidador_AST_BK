@@ -11,6 +11,16 @@ suman en el TOTAL; PDF obligatorio en el alta de la Precarga; la Nota de crédit
 los meses para comparar con Power BI los elige el usuario en F5, o los tres últimos cerrados con
 históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de los pasos visuales.
 
+### Ajustes de ejecución (2026-10-14, con OK del usuario, para ir más rápido)
+
+- **Back y front en paralelo.** Un `ejecutor` sigue los pasos A del backend y otro los FA del
+  front, cada uno en su worktree. Cada carril sigue de a un par por vez.
+- **Tests sólo del paso.** Cada par corre únicamente la verificación que nombra su paso, no el
+  módulo entero ni `tests/core` de más. La suite completa corre una vez en A13 y en FA7.
+- **Nombre de las tareas de una Revisión** (`revision.tareas[].tarea_nombre`, ruta 14): no se
+  guarda en la base. Sale del maestro del campo y, si la tarea no está ahí, de las Líneas del
+  mes (la misma regla del Detalle). La 004 no cambia. Lo aplican A8 y A9.
+
 ## Antes de empezar: premisas que no se cumplen
 
 1. **Con el Mes de corte en octubre de 2026, hoy no hay nada para cargar desde el Resumen.**
