@@ -6,11 +6,15 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Nada en curso.
+- Facturación, etapa 3 (Resumen, Detalle y Precarga): plan aprobado (2026-10-14), fase 3, ejecución de la
+  E3a. Plan en `docs/superpowers/plans/2026-10-14-facturacion-e3.md` de la rama `feature/facturacion-e3`
+  (worktrees `.claude/worktrees/facturacion-e3` en los dos repos). Se parte en E3a (Resumen, Detalle,
+  Revisión, migraciones 004 y 005) y E3b (Precarga, Período facturado y migración 006), cada una con PRs
+  hermanos.
 
 ## Próximo paso
 
-Planear con el planificador la etapa 3 de Facturación (Resumen, Detalle y Precarga, según `docs/modulos/facturacion/plan-facturacion.md`), con OK del usuario antes del código. El primer deploy de Facturación ya se hizo (2026-10-13): la `facturacion/003` está en producción. Facturación se deploya por avances, a medida que se mergea, escondida: nadie tiene su rol, así que nadie la ve (el usuario cambió la decisión del 2026-10-12, porque va a trabajar en Preliquidación en otra sesión; 2026-10-13). Todo deploy, con OK.
+Ejecutar la E3a con el `ejecutor`, par por par, desde el A1 (claves de pantalla). Antes de los pasos visuales del front, los bocetos de F0 con OK del usuario. Toda migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su rol (2026-10-13).
 
 ## Pendientes del usuario
 
