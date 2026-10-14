@@ -189,7 +189,7 @@ CONTADORA = _persona(("facturacion", "comprobantes", "editar"))
 LECTORA = _persona(("facturacion", "comprobantes", "ver"))
 # Edita otra pantalla del módulo, pero no Comprobantes.
 OTRA_PANTALLA = _persona(("facturacion", "equivalencias", "editar"),
-                         ("facturacion", "pendientes", "editar"))
+                         ("facturacion", "resumen", "editar"))
 DE_OTRO_MODULO = _persona(("preliquidacion", "revision", "editar"))
 
 
