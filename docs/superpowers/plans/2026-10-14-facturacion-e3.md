@@ -28,6 +28,11 @@ históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de lo
   (`fecha`, no `date_time`), y `tareas.unidad` no se usa para facturar (sigue la Unidad sugerida
   del BK #94). Riesgo para F5: un valor con coma decimal en el campo, Power BI puede leerlo y el
   REGEXP lo cuenta 0.
+- **A7b. Par: precio 0 es "sin precio"** (decisión del usuario, 2026-10-14). Si la última
+  Factura del Cliente para la (tarea, unidad) tiene precio unitario 0 o menos, no hay Precio
+  sugerido: `precios_sugeridos` no devuelve esa clave (no se busca una Factura anterior). En el
+  Detalle la tarea cuenta en `tareas_sin_precio`; en la Precarga el precio queda vacío. Porqué:
+  un precio 0 suele ser un error de carga.
 - **Comentario de la Revisión** (A9): se recortan los espacios de los bordes antes de medir el
   largo, igual que el front (FA4).
 
