@@ -1094,6 +1094,13 @@ Descartado:
 ### 3.8 Pasos FRENADOS (los hace la sesión principal, con OK donde se indica)
 
 **F0. Boceto de lo que el mockup no cubre, con OK del usuario.** Lo arma la sesión principal en el scratchpad, sin datos reales.
+- **E3a, aprobado por el usuario el 2026-10-14** (`fact-mockup/boceto-f0-e3a.html`, fuera del repo). Fija:
+  - "Datos del campo de las HH:MM · Volver a leer", arriba a la derecha del Resumen;
+  - el aviso de tareas sin Unidad sugerida, banner warn sobre la tabla con "Ver cuáles" (tarea y en cuántos Clientes);
+  - el pie con "Cambiar" sólo para el Admin, que abre el formulario en el mismo pie (Umbral con %, Mes de corte, Cancelar, Guardar, el error 422 debajo del campo y "Último cambio: quién, cuándo");
+  - en el Detalle, cuatro avisos: Con diferencia con una Revisión anterior que no alcanza (nombra la fecha, quién, el comentario, qué cubría y qué supera ahora), Antes del corte (info), Mes en curso (info) y Revisada con Deshacer; la tarea cubierta por la Revisión lleva la etiqueta "Revisada" junto a "Supera", y una tarea sin Unidad sugerida lo dice junto al nombre.
+  - Al hacer FA5, `pantallas.md` suma la línea de "Datos del campo de las HH:MM" (el A0 no la tenía).
+- **E3b:** pendiente, antes de FB4.
 - Antes de FA5:
   - el aviso de tareas sin Unidad sugerida;
   - el pie con "Cambiar" y su formulario;
