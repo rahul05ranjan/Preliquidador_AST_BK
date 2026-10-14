@@ -61,7 +61,8 @@ Comprobante que corrige una Factura hacia abajo. Apunta a la Factura que corrige
 Líneas restan en el Cruce.
 
 **Fecha de carga**:
-El día en que se registró el Comprobante en Facturación. La pone el sistema y no se cambia.
+El día en que se registró el Comprobante en Facturación. La pone el sistema y no se cambia. Un
+Comprobante histórico no la tiene: su fecha es la de la factura que anotó la planilla.
 _Avoid_: confundirla con el Período facturado, que es lo que decide en qué mes cuenta.
 
 **Período facturado**:
@@ -74,7 +75,8 @@ _Avoid_: un período que cruce de un mes a otro.
 **Línea de comprobante**:
 Un renglón del Comprobante traducido al lenguaje del campo: tarea del sistema de campo, Unidad
 de facturación, cantidad, precio unitario e importe neto (sin IVA). La finca es opcional. Cuenta
-en el Período facturado de su Comprobante.
+en el Período facturado de su Comprobante. En un Comprobante histórico, que no tiene Período
+facturado, cada Línea cuenta en el mes de su propia fecha a facturar, la que anotó la planilla.
 _Avoid_: el texto con que el cliente nombra la tarea; eso es lo que traduce la Equivalencia.
 
 **Adjunto**:
@@ -87,7 +89,10 @@ Un Comprobante que vino de la planilla anterior al módulo. Puede no tener Empre
 Adjunto, y no genera la Alerta "Falta comprobante". Puede no tener número, cuando la planilla no
 lo anotó: junta las filas de un Cliente con la misma fecha a facturar, y pasa al Comprobante
 con número cuando la planilla lo tenga. Uno sin número posterior al corte que fijó el usuario
-se toma como todavía no facturado: sus Líneas no cuentan como facturado en el Cruce.
+se toma como todavía no facturado: sus Líneas no cuentan como facturado en el Cruce. No tiene
+Período facturado: cada Línea cuenta en el mes de su fecha a facturar, así que uno con Líneas
+en varios meses cuenta en cada uno. Tampoco tiene Fecha de carga: su fecha es la de la factura
+que anotó la planilla, si la anotó.
 
 ---
 
@@ -201,8 +206,8 @@ _Avoid_: "Alerta revisada" (el nombre anterior).
 
 **Umbral de diferencia**:
 El porcentaje de Diferencia a partir del cual una tarea deja el mes Con diferencia. Es uno solo
-para todos los Clientes y tareas, y lo cambia sólo el Admin.
+para todos los Clientes y tareas, y lo cambia sólo el Admin, desde el pie del Resumen.
 
 **Mes de corte**:
 El primer mes que se controla. Los anteriores se ven en el Resumen y en el Cruce como Antes del
-corte y no generan Alertas de facturación. Lo mueve sólo el Admin.
+corte y no generan Alertas de facturación. Lo mueve sólo el Admin, desde el pie del Resumen.

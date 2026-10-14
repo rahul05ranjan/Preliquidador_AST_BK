@@ -38,6 +38,10 @@ mismos números que el informe de Power BI que hoy hace ese control.
     y Falta comprobante), cada uno con su cantidad. Tocar uno filtra la tabla por esa Alerta.
   - Barra de filtros: período con atajos (Mes pasado, Este mes, Últimos 3 meses, Este año, Otro
     período) y seleccionables de Mes, Cliente y Estado. Arranca en el mes pasado.
+  - Debajo de los cuadros y de la barra, sobre la tabla, un aviso cuando hay tareas facturables
+    sin Unidad sugerida con trabajo en el período: cuántas son, un desplegable con cada tarea y
+    en cuántos Clientes, y que se definen en la app de campo. No es una Alerta: no entra en los
+    cuadros ni en el Estado del mes.
   - Tabla, una fila por mes y Cliente: Horas peón, Horas tractor, Tancadas, Plantas, Hectáreas
     (lo trabajado según el campo), Facturado (neto), Estado y una acción. La fila TOTAL queda
     fija abajo.
@@ -50,6 +54,8 @@ mismos números que el informe de Power BI que hoy hace ese control.
   - Una fila Facturada con Revisión de diferencia lleva la nota "Diferencia revisada". El mes
     en curso y los meses Antes del corte van en gris.
   - Un pie dice desde qué mes se controla, el Umbral de diferencia y que la cosecha no entra.
+    Sólo el Admin ve "Cambiar", que abre en el mismo pie un formulario chico para el Umbral de
+    diferencia y el Mes de corte.
 - **Detalle** (el Cruce de un Cliente en un mes):
   - Barra superior con el Cliente, el mes, el Estado del mes y los Comprobantes del mes como
     links.
@@ -109,7 +115,9 @@ mismos números que el informe de Power BI que hoy hace ese control.
 - Un Cliente sin trabajo y sin Comprobantes en el mes no aparece.
 - Comprobante histórico: sin Empresa emisora ni Adjunto, con una marca y sin Falta
   comprobante.
-- Tarea facturable sin Unidad sugerida: aviso en el Resumen (etapa 3).
+- Tarea facturable sin Unidad sugerida: un solo aviso sobre la tabla del Resumen, no uno por
+  fila. En el Detalle, la tarea dice "Sin Unidad sugerida"; en la Precarga, la Unidad queda
+  vacía y marcada.
 - La lectura del sistema de campo es lenta: indicador de carga. Toda escritura muestra el
   overlay.
 
@@ -124,6 +132,3 @@ mismos números que el informe de Power BI que hoy hace ese control.
 
 - Pegar varias filas desde Excel en la grilla de líneas: por ahora no; se agrega si las
   contadoras lo piden.
-- Dónde cambia el Admin el Umbral de diferencia y el Mes de corte: lo decide la etapa 3.
-- Dónde va el aviso de tarea facturable sin Unidad sugerida dentro del Resumen: lo decide la
-  etapa 3.

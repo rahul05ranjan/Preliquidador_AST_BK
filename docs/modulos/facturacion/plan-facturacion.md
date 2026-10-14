@@ -79,7 +79,8 @@ facturado.
   qué mes cuenta: se propone solo y la contadora lo puede cambiar al mes anterior, a una
   quincena o a otros días. **Queda siempre dentro de un mismo mes**: si una factura cobrara
   trabajo de dos meses, el Resumen no sabría dónde contarla, y el usuario confirmó que no pasa.
-  Reemplaza a la fecha por Línea del diseño anterior (cualquier día del mes). Finca opcional.
+  Reemplaza a la fecha por Línea del diseño anterior (cualquier día del mes). La Precarga no
+  pide finca: una Línea que ya la tenía la conserva al editarse.
 
 ### 3.2 La carga
 
@@ -129,8 +130,13 @@ facturado.
 - Decidido el 2026-10-11, al planificar la etapa 1. Descartado: la unidad fija por tarea del
   diseño original ("Grupo de facturación"), porque una tarea que un cliente pide facturar por
   hora y otro por planta comparaba horas contra plantas.
-- Pendiente para el plan de la etapa 3: qué muestra el Cruce cuando una misma tarea se factura
-  en dos unidades dentro del mes.
+- **Una tarea facturada en dos unidades dentro del mes** (2026-10-14): el Detalle muestra una
+  fila por unidad, cada una contra la Cantidad del campo en su unidad y medida contra el Umbral
+  de diferencia por separado, con la marca de que la tarea va en dos unidades. En el Resumen, la
+  tarea suma en la columna de cada unidad. Plantas y hectáreas leen la misma medida del campo,
+  así que lo esperable es que alguna supere: el mes queda Con diferencia y se resuelve con una
+  Revisión de diferencia. Descartado: una sola fila con la unidad de mayor importe, porque
+  esconde la otra, y prorratear, porque adivina.
 - **Clave del Cruce: Cliente + mes + tarea**, agrupado por grupo de tareas. Lo facturado cuenta
   en el mes de su Período facturado. La finca no es parte de la clave (en la planilla casi
   nunca se carga).
@@ -218,13 +224,20 @@ ellas. Reemplazan a las tres capacidades del diseño original (consultar, cargar
 | **Panel** | sí, desde Gerencial | — (sólo Ver) |
 
 - **Resumen reemplaza a Pendientes y Cruce** (2026-10-14): el Detalle es el Cruce de una fila
-  del Resumen, y separarlos permitiría ver los estados sin poder ver por qué. Cómo se pasan las
-  claves de pantalla ya declaradas (`pendientes` y `cruce`) lo decide el plan de la etapa 3:
-  nadie tiene todavía el rol del módulo.
+  del Resumen, y separarlos permitiría ver los estados sin poder ver por qué. Las claves de
+  pantalla ya declaradas (`pendientes` y `cruce`) se retiran como se retiró la de la pantalla
+  Unidad de medida por defecto: salen del módulo, sus permisos guardados se borran después del
+  deploy y no se reutilizan nunca, porque un rol con permisos viejos ganaría la pantalla nueva.
+  Tampoco se copian a Resumen, porque una pantalla nueva no entra en los roles que ya existen
+  (GUIA-MODULOS): el admin suma Resumen al rol de las contadoras cuando lo asigne.
 - **Importar orden va dentro de Comprobantes**, no como pantalla propia: importar es otra
   forma de crear Comprobantes, y separarlas permitiría importar sin poder cargar a mano.
 - **El Umbral y el Mes de corte los cambia sólo el Admin.** Quien deja Revisiones no los puede
-  tocar, para no hacer desaparecer las Alertas. Dónde los cambia lo decide la etapa 3.
+  tocar, para no hacer desaparecer las Alertas. Los cambia desde el pie del Resumen, donde ya se
+  muestran, con "Cambiar", que sólo ve el Admin; el backend vuelve a controlar que lo sea. Se
+  guardan en el módulo y, mientras nadie los cambie, valen los iniciales. Descartado: variables
+  de entorno (las cambia quien deploya, no el Admin), una pantalla propia y la Administración del
+  núcleo, que no conoce los módulos.
 - **El módulo no crea roles.** Al activarlo, el admin arma desde la Administración el rol de
   las contadoras y suma al de Gerente lo que corresponda. Las contadoras están en el padrón
   de empleados y se dan de alta como cualquier usuario.
@@ -246,7 +259,7 @@ Cada etapa es un par de PRs hermanos (backend y frontend). Deploy sólo con OK.
 |---|---|---|
 | **1** | El módulo registrado y activo, con sus pantallas. La **Unidad sugerida** y la marca **No facturable** de cada tarea, con su primera carga y la pantalla Unidad de medida por defecto. `PRODUCT.md` del front con las contadoras y el módulo. Esa pantalla, con su tabla y su primera carga, se retiró el 2026-10-12: la Unidad sugerida y No facturable se leen del sistema de campo. | Cada tarea tiene Unidad sugerida o es No facturable, y las que no tienen nada se ven primero. |
 | **2** | **Comprobantes** (Factura y Nota de crédito, cabecera y líneas), **Adjuntos** en la carpeta del VPS y la **migración del histórico**, re-ejecutable. | El histórico migrado suma lo mismo que la planilla, por Cliente y mes. |
-| **3** | **Resumen** y **Detalle** (el Cruce por mes, hasta los partes del campo), con el **Estado del mes**, las Alertas, la Revisión de diferencia, el Umbral y el Mes de corte (dónde los cambia el Admin, lo decide esta etapa). La **Precarga**, con el Período facturado, la Fecha de carga y el Precio sugerido. El aviso de tarea facturable sin Unidad sugerida, en el Resumen. Rediseñada el 2026-10-14; el plan puede partirla en dos. | El Cruce da los mismos números que el informe de Power BI para los meses ya cerrados, salvo las diferencias explicadas en la sección 4, y una factura del mes pasado se carga desde el Resumen con la Precarga. |
+| **3** | **Resumen** y **Detalle** (el Cruce por mes, hasta los partes del campo), con el **Estado del mes**, las Alertas, la Revisión de diferencia, el Umbral y el Mes de corte (los cambia el Admin desde el pie del Resumen). La **Precarga**, con el Período facturado, la Fecha de carga y el Precio sugerido. El aviso de tarea facturable sin Unidad sugerida, en el Resumen. Rediseñada el 2026-10-14 y partida en E3a (Resumen, Detalle, Revisión de diferencia, Umbral y Mes de corte) y E3b (Precarga, Período facturado y Fecha de carga). | El Cruce da los mismos números que el informe de Power BI para los meses ya cerrados, salvo las diferencias explicadas en la sección 4, y una factura del mes pasado se carga desde el Resumen con la Precarga. |
 | **4** | **Importador del primer cliente con portal** (formato nuevo), dentro de la Precarga, y **Equivalencias** por Cliente, con su primera carga. **Las contadoras dejan la planilla.** | Una orden real se importa completa, y cada renglón sin Equivalencia frena hasta definirla. |
 | **5** | **Importador del segundo cliente con portal** y **Panel** de lo facturado por mes, Cliente y grupo de tareas, en Gerencial. | Lo mismo que la etapa 4 para el segundo formato. |
 
@@ -265,10 +278,7 @@ Cada etapa es un par de PRs hermanos (backend y frontend). Deploy sólo con OK.
 
 - **Respaldo de la carpeta de adjuntos** en el VPS. Se suma al pendiente de confirmar el
   respaldo de la base (ADR-0019).
-- **Umbral de diferencia**: arranca en 5 %. Se ajusta con el uso. Dónde lo cambia el Admin lo
-  decide la etapa 3.
-- **El Período facturado de los Comprobantes históricos y de los ya cargados**: hoy cada Línea
-  tiene su fecha. Cómo se pasa al Período facturado lo decide el plan de la etapa 3.- **Pegar varias filas desde Excel** en la grilla de líneas: por ahora no. Se agrega si las
+- **Pegar varias filas desde Excel** en la grilla de líneas: por ahora no. Se agrega si las
   contadoras lo piden.
 
 ## 8. A futuro
