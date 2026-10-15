@@ -18,6 +18,7 @@ Ejecutar la E3a con el `ejecutor`, par por par, desde el A1 (claves de pantalla)
 
 ## Pendientes del usuario
 
+- Terceros, etapa 11 de Pitu (BK #101 y FT #82): revisados el 2026-10-15, con la revisión dejada como comentario en los dos PRs (3 urgent y 10 high). No se mergean hasta que Pitu los arregle. El FT #82, además, espera la decisión del usuario sobre la dependencia `html2pdf.js`. Antes del deploy, confirmar en producción lo que da por hecho la migración `terceros/010`.
 - Cargar `TALLER_SHEET_URL` en el `.env` del servidor y reiniciar el backend: hasta entonces las alertas de Terceros responden 502 a propósito (deploy del 2026-09-30).
 - Asignar el rol "Liquidador de terceros" desde Administración a quienes liquiden Terceros (nace sin personas; BK #83, deploy del 2026-10-11).
 - Avisarle a Pitu que sumar las tablas `terceros_*` a `TABLAS` de `scripts/refrescar_testing.py` queda para él: el próximo refresco de `testing` pisaría sus datos de prueba de Terceros con los de producción (el usuario lo decidió así, 2026-10-11).
