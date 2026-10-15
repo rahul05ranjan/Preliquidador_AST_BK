@@ -1,18 +1,22 @@
-"""El Resumen de Facturación y su configuración (plan de la E3, decisiones 4
-y 6, rutas 13 y 17).
+"""El Resumen de Facturación, el Detalle y la configuración (plan de la E3,
+decisiones 4 y 6, rutas 13, 14 y 17).
 
 El Resumen es una fila por Cliente y mes, con lo trabajado, lo facturado y el
 Estado del mes. Lo trabajado y el maestro de tareas salen del campo, con la
 caché de consulta_externa; lo facturado, los Adjuntos, las Revisiones y la
 configuración se leen siempre frescos de la base propia. El Cruce lo hace el
-motor puro (cruce.py): acá se lee, se valida y se arma la respuesta.
+motor puro (cruce.py): acá se lee, se valida y se arma la respuesta. El
+Detalle pasa por el mismo motor con los partes del Cliente, así da los mismos
+estados que el Resumen para el mismo mes.
 
 La consulta del campo se recibe por parámetro, como en ComprobantesService,
 para que los tests usen una falsa. Los valores salen como Decimal y date: el
 texto del contrato lo da el schema del router.
 """
-from datetime import date
-from decimal import Decimal, InvalidOperation
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -27,14 +31,22 @@ from app.modulos.facturacion.models import (
 )
 from app.modulos.facturacion.services.consulta_externa import invalidar_cache_cruce
 from app.modulos.facturacion.services.cruce import (
-    ESTADOS, UNIDADES_CRUCE, CruceMes, LineaFacturada, cruzar, tareas_sin_unidad,
+    CERO, CON_DIFERENCIA, ESTADOS, UNIDADES, UNIDADES_CRUCE, CruceMes, FilaCruce,
+    LineaFacturada, cantidad_en_unidad, cruzar, cruzar_mes, medidas_por_tarea,
+    tareas_sin_unidad,
 )
+from app.modulos.facturacion.services.precios import precios_sugeridos
+from app.modulos.facturacion.services.reglas_comprobante import FACTURA
 
 # La única fila de facturacion_configuracion.
 ID_CONFIGURACION = 1
 # Hasta 100 %, con dos decimales como la columna, DECIMAL(5,2).
 UMBRAL_MAXIMO = Decimal("100")
 _CENTESIMOS = Decimal("0.01")
+# El precio medio del mes, con los decimales de precio_unitario, NUMERIC(14,4).
+_DIEZMILESIMOS = Decimal("0.0001")
+# El grupo de las tareas sin grupo en el maestro (o que no están en él).
+SIN_GRUPO = "Sin grupo"
 
 
 # ─── Excepciones ────────────────────────────────────────────────────────────
@@ -64,6 +76,12 @@ class RangoInvalido(ErrorResumen):
     def __init__(self, campo: str, mensaje: str):
         self.campo = campo
         super().__init__(mensaje)
+
+
+class ClienteNoEncontrado(ErrorResumen):
+    """404 del Detalle: el Cliente no está en el maestro (con las bajas) y no
+    tiene ningún Comprobante."""
+    mensaje = "No existe ese Cliente."
 
 
 class ConfiguracionInvalida(ErrorResumen):
@@ -259,6 +277,105 @@ class ResumenService:
             "tareas_sin_unidad": tareas_sin_unidad(visibles),
         }
 
+    # ─── Detalle (ruta 14) ──────────────────────────────────────────────────
+
+    def detalle(self, cliente_id: int, mes: str, refrescar: bool = False) -> dict:
+        """El Detalle de un Cliente en un mes ("AAAA-MM"): el Cruce tarea por
+        tarea con sus partes, los pesos, los Comprobantes del mes y la
+        Revisión vigente (ruta 14).
+
+        El mes se valida antes de leer nada, y el 404 (un Cliente que no está
+        en el maestro, con las bajas, ni tiene ningún Comprobante) se decide
+        antes de leer los partes. Con refrescar, la caché del Cruce se vacía
+        antes de leer. `leido_en` es la más vieja de las dos lecturas del
+        campo, como en el Resumen."""
+        inicio = _leer_mes(mes, "mes")
+        if refrescar:
+            invalidar_cache_cruce()
+        nombres = self.nombres_de_clientes({cliente_id})
+        if cliente_id not in nombres:
+            raise ClienteNoEncontrado()
+
+        datos = self.datos_del_mes(cliente_id, inicio)
+        cruce = datos.cruce
+        precios = _precios(cruce, precios_sugeridos(self.db, cliente_id))
+        configuracion = datos.configuracion
+        return {
+            "cliente_id": cliente_id,
+            "cliente_nombre": nombres[cliente_id],
+            "mes": inicio,
+            "umbral_pct": configuracion["umbral_pct"],
+            "mes_corte": configuracion["mes_corte"],
+            "leido_en": datos.leido_en,
+            "estados": list(cruce.estados),
+            "diferencia_revisada": cruce.diferencia_revisada,
+            "se_puede_revisar": CON_DIFERENCIA in cruce.estados,
+            "comprobantes": _comprobantes(datos.lineas),
+            "grupos": _grupos(cruce.filas, datos.partes, precios),
+            "total": _total(cruce, precios),
+            "revision": self._revision(datos.vigente, datos.nombres_de_tareas),
+        }
+
+    def datos_del_mes(self, cliente_id: int, mes: date) -> "DatosDelMes":
+        """Lee el campo y la base propia de un Cliente en un mes y los pasa
+        por el motor, igual que el Resumen: los partes del mes (con caché),
+        el maestro de tareas (con caché), lo facturado y la Revisión vigente
+        (frescos). Lo usan el Detalle y la Revisión, que así ven el mismo
+        Cruce."""
+        configuracion = self.configuracion()
+        partes = self.consulta.partes_de_cliente(cliente_id, mes, fechas.fin_de_mes(mes))
+        tareas = self.consulta.tareas_cruce()
+        lineas = leer_lineas(self.db, mes, mes, cliente_id)
+        vigente = revisiones_vigentes(self.db, mes, mes, cliente_id).get((cliente_id, mes))
+        cruce = cruzar_mes(
+            cliente_id=cliente_id, mes=mes,
+            trabajado=medidas_por_tarea(partes["filas"]),
+            lineas=lineas, tareas=tareas["filas"],
+            umbral_pct=configuracion["umbral_pct"],
+            mes_corte=configuracion["mes_corte"], mes_en_curso=mes_en_curso(),
+            revisadas=(None if vigente is None else
+                       {(t.tarea_id, t.unidad) for t in vigente.tareas}))
+
+        # El nombre de cada tarea: el del maestro y, si no está ahí, el de
+        # las Líneas del mes (la misma regla que el motor usa en las filas).
+        nombres_de_tareas = {}
+        for linea in lineas:
+            nombres_de_tareas.setdefault(linea.tarea_id, linea.tarea_nombre)
+        for tarea in tareas["filas"]:
+            if tarea.get("nombre"):
+                nombres_de_tareas[tarea["tarea_id"]] = tarea["nombre"]
+
+        return DatosDelMes(
+            configuracion=configuracion,
+            leido_en=min(partes["leido_en"], tareas["leido_en"]),
+            partes=partes["filas"],
+            lineas=lineas,
+            vigente=vigente,
+            nombres_de_tareas=nombres_de_tareas,
+            cruce=cruce,
+        )
+
+    def _revision(self, vigente: RevisionDiferencia | None,
+                  nombres_de_tareas: dict) -> dict | None:
+        """La Revisión vigente como la pide la ruta 14, o None."""
+        if vigente is None:
+            return None
+        persona = (self.db.get(Usuario, vigente.creada_por)
+                   if vigente.creada_por is not None else None)
+        tareas = [{"tarea_id": t.tarea_id,
+                   "tarea_nombre": nombres_de_tareas.get(t.tarea_id),
+                   "unidad": t.unidad}
+                  for t in vigente.tareas]
+        tareas.sort(key=lambda t: (t["tarea_nombre"] or "", t["tarea_id"],
+                                   _orden_unidad(t["unidad"])))
+        return {
+            "id": vigente.id,
+            "comentario": vigente.comentario,
+            "creada_en": vigente.creada_en,
+            "creada_por_nombre": persona.nombre if persona else None,
+            "tareas": tareas,
+        }
+
     def nombres_de_clientes(self, cliente_ids: set) -> dict:
         """{cliente_id: nombre}: del maestro del campo, con las bajas; si el
         Cliente no está ahí, la copia de su Comprobante más nuevo. Un Cliente
@@ -302,6 +419,118 @@ def _validar_rango(desde: date, hasta: date, en_curso: date) -> None:
             "desde", f"El Resumen muestra hasta {MESES_MAXIMOS} meses de una vez.")
     if hasta > en_curso:
         raise RangoInvalido("hasta", "El mes final no puede pasar del mes en curso.")
+
+
+@dataclass
+class DatosDelMes:
+    """Lo que el Detalle y la Revisión leen de un Cliente en un mes, ya
+    cruzado. `lineas` son todas las del mes, también las que no cuentan en el
+    Cruce; `partes`, las filas del campo tal como vienen de la caché (no se
+    modifican)."""
+    configuracion: dict
+    leido_en: datetime
+    partes: list[dict]
+    lineas: list[LineaFacturada]
+    vigente: RevisionDiferencia | None
+    nombres_de_tareas: dict
+    cruce: CruceMes
+
+
+def _orden_unidad(unidad: str | None) -> int:
+    return UNIDADES.index(unidad) if unidad in UNIDADES else len(UNIDADES)
+
+
+def _precios(cruce: CruceMes, sugeridos: dict) -> dict:
+    """El precio de cada (tarea, unidad) del Cruce (decisión 6, pesos del
+    Detalle): el precio medio de las Facturas del mes que cuentan
+    (Σimporte / Σcantidad) y, si no hay, el Precio sugerido. Una fila sin
+    unidad o sin ninguno de los dos no figura: queda sin valorizar."""
+    sumas: dict[tuple, list[Decimal]] = defaultdict(lambda: [CERO, CERO])
+    for linea in cruce.lineas:
+        if linea.tipo == FACTURA:
+            suma = sumas[(linea.tarea_id, linea.unidad)]
+            suma[0] += linea.importe
+            suma[1] += linea.cantidad
+    precios = {}
+    for f in cruce.filas:
+        clave = (f.tarea_id, f.unidad)
+        if f.unidad is None:
+            continue
+        importe, cantidad = sumas.get(clave, (CERO, CERO))
+        if cantidad:
+            precios[clave] = (importe / cantidad).quantize(
+                _DIEZMILESIMOS, rounding=ROUND_HALF_UP)
+        elif clave in sugeridos:
+            precios[clave] = sugeridos[clave]["precio_unitario"]
+    return precios
+
+
+def _comprobantes(lineas: list[LineaFacturada]) -> list[dict]:
+    """Todos los Comprobantes con alguna Línea en el mes, también los que no
+    cuentan en el Cruce, por id."""
+    por_id = {}
+    for linea in lineas:
+        por_id.setdefault(linea.comprobante_id, {
+            "id": linea.comprobante_id, "tipo": linea.tipo, "numero": linea.numero,
+            "cantidad_adjuntos": linea.cantidad_adjuntos,
+            "es_historico": linea.es_historico,
+        })
+    return [por_id[i] for i in sorted(por_id)]
+
+
+def _grupos(filas: list[FilaCruce], partes: list[dict], precios: dict) -> list[dict]:
+    """Las filas del Cruce por grupo de tareas: los grupos por nombre y "Sin
+    grupo" al final; dentro de cada uno, el orden del motor. Cada fila lleva
+    sus partes medidos en su unidad (None si no tiene), por fecha."""
+    partes_por_tarea: dict[int, list[dict]] = defaultdict(list)
+    for parte in sorted(partes, key=lambda p: p["fecha"]):
+        partes_por_tarea[parte["tarea_id"]].append(parte)
+
+    grupos: dict[str, list[dict]] = defaultdict(list)
+    for f in filas:
+        grupos[f.grupo_tarea or SIN_GRUPO].append({
+            "tarea_id": f.tarea_id,
+            "tarea_nombre": f.tarea_nombre,
+            "unidad": f.unidad,
+            "sin_unidad_sugerida": f.sin_unidad_sugerida,
+            "en_varias_unidades": f.en_varias_unidades,
+            "campo": f.campo,
+            "facturado": f.facturado,
+            "diferencia": f.diferencia,
+            "diferencia_pct": f.diferencia_pct,
+            "supera": f.supera,
+            "precio": precios.get((f.tarea_id, f.unidad)),
+            "partes": [
+                {"fecha": p["fecha"], "donde": p["donde"], "supervisor": p["supervisor"],
+                 "cantidad": cantidad_en_unidad(p, f.unidad)}
+                for p in partes_por_tarea.get(f.tarea_id, [])
+            ],
+        })
+    orden = sorted(grupos, key=lambda g: (g == SIN_GRUPO, g))
+    return [{"grupo": g, "tareas": grupos[g]} for g in orden]
+
+
+def _total(cruce: CruceMes, precios: dict) -> dict:
+    """El TOTAL del Detalle: el campo valorizado con el precio de cada fila,
+    lo facturado neto real (las Notas de crédito restan), la diferencia y su
+    % ("—", None, si el campo valorizado es 0), y cuántas tareas tienen alguna
+    fila sin precio (una tarea en dos unidades cuenta una vez)."""
+    campo = sum((f.campo * precios[(f.tarea_id, f.unidad)]
+                 for f in cruce.filas
+                 if (f.tarea_id, f.unidad) in precios and f.campo is not None),
+                CERO).quantize(_CENTESIMOS, rounding=ROUND_HALF_UP)
+    facturado = cruce.facturado_neto
+    diferencia = facturado - campo
+    return {
+        "campo_pesos": campo,
+        "facturado_pesos": facturado,
+        "diferencia_pesos": diferencia,
+        "diferencia_pct": (None if not campo else
+                           (diferencia * 100 / campo).quantize(
+                               _CENTESIMOS, rounding=ROUND_HALF_UP)),
+        "tareas_sin_precio": len({f.tarea_id for f in cruce.filas
+                                  if (f.tarea_id, f.unidad) not in precios}),
+    }
 
 
 def _fila(cruce: CruceMes, cliente_nombre: str | None) -> dict:
