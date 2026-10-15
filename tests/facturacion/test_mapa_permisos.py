@@ -7,7 +7,11 @@ cada endpoint de `/api/facturacion`.
 `GET /tareas`, todas de la pantalla `comprobantes`. Las dos
 rutas de la E1 (`/tareas`, pantalla `unidad`) salieron el 2026-10-12 con su
 pantalla (`docs/superpowers/plans/2026-10-12-unidad-desde-campo.md`); la E2
-vuelve a crear `GET /tareas`, ahora en `comprobantes`. El mapa real se lee
+vuelve a crear `GET /tareas`, ahora en `comprobantes`. Las filas 13 a 17 son
+las de la tabla 3.2 del plan de la E3
+(`docs/superpowers/plans/2026-10-14-facturacion-e3.md`): el Resumen y el
+Detalle piden Ver en `resumen`; dejar y deshacer una Revisión, Editar; la
+configuración, ser admin. El mapa real se lee
 de `app.routes`: cada dependencia de `requiere_pantalla` expone `.requisito`.
 Una ruta nueva sin su fila, una fila sin ruta o un permiso distinto del de la
 tabla hacen fallar el test.
@@ -30,8 +34,12 @@ F = PREFIJO
 
 VER_COMPROBANTES = _exige("ver", "comprobantes")
 EDITAR_COMPROBANTES = _exige("editar", "comprobantes")
+VER_RESUMEN = _exige("ver", "resumen")
+EDITAR_RESUMEN = _exige("editar", "resumen")
+ADMIN = "admin"
 
-# Los números son los de la tabla 3.2 del plan de la E2.
+# Los números son los de la tabla 3.2 del plan de la E2 (1 a 12) y de la E3
+# (13 a 17).
 ESPERADO = {
     # 1 y 2
     ("GET", f"{F}/comprobantes"): VER_COMPROBANTES,
@@ -50,6 +58,14 @@ ESPERADO = {
     ("GET", f"{F}/empresas"): VER_COMPROBANTES,
     # Las tareas del campo, con su Unidad sugerida (la crea la E2, paso A6).
     ("GET", f"{F}/tareas"): VER_COMPROBANTES,
+    # 13 y 14: el Resumen y el Detalle (E3).
+    ("GET", f"{F}/resumen"): VER_RESUMEN,
+    ("GET", f"{F}/resumen/{{cliente_id}}/{{mes}}"): VER_RESUMEN,
+    # 15 y 16: dejar y deshacer una Revisión de diferencia.
+    ("POST", f"{F}/resumen/{{cliente_id}}/{{mes}}/revision"): EDITAR_RESUMEN,
+    ("DELETE", f"{F}/resumen/{{cliente_id}}/{{mes}}/revision"): EDITAR_RESUMEN,
+    # 17: el Umbral y el Mes de corte, sólo el Admin (decisión 4).
+    ("PUT", f"{F}/configuracion"): ADMIN,
 }
 
 
@@ -85,8 +101,8 @@ def _mapa_real():
     return mapa
 
 
-def test_la_tabla_tiene_las_12_rutas():
-    assert len(ESPERADO) == 12
+def test_la_tabla_tiene_las_17_rutas():
+    assert len(ESPERADO) == 17
 
 
 def test_cada_endpoint_exige_la_pantalla_y_el_nivel_de_la_tabla():
