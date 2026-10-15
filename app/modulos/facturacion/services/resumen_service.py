@@ -1,5 +1,5 @@
-"""El Resumen de Facturación, el Detalle y la configuración (plan de la E3,
-decisiones 4 y 6, rutas 13, 14 y 17).
+"""El Resumen de Facturación, el Detalle, la Revisión de diferencia y la
+configuración (plan de la E3, decisiones 4 y 6, rutas 13 a 17).
 
 El Resumen es una fila por Cliente y mes, con lo trabajado, lo facturado y el
 Estado del mes. Lo trabajado y el maestro de tareas salen del campo, con la
@@ -7,7 +7,8 @@ caché de consulta_externa; lo facturado, los Adjuntos, las Revisiones y la
 configuración se leen siempre frescos de la base propia. El Cruce lo hace el
 motor puro (cruce.py): acá se lee, se valida y se arma la respuesta. El
 Detalle pasa por el mismo motor con los partes del Cliente, así da los mismos
-estados que el Resumen para el mismo mes.
+estados que el Resumen para el mismo mes; la Revisión guarda lo que superaba
+con esos mismos datos.
 
 La consulta del campo se recibe por parámetro, como en ComprobantesService,
 para que los tests usen una falsa. Los valores salen como Decimal y date: el
@@ -24,14 +25,16 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.models import Usuario, ahora_utc
 from app.modulos.facturacion import fechas
 from app.modulos.facturacion.config import (
-    MES_CORTE_INICIAL, MESES_MAXIMOS, UMBRAL_INICIAL,
+    LARGO_COMENTARIO, MES_CORTE_INICIAL, MESES_MAXIMOS, UMBRAL_INICIAL,
 )
 from app.modulos.facturacion.models import (
     Adjunto, Comprobante, Configuracion, LineaComprobante, RevisionDiferencia,
+    RevisionTarea,
 )
 from app.modulos.facturacion.services.consulta_externa import invalidar_cache_cruce
 from app.modulos.facturacion.services.cruce import (
-    CERO, CON_DIFERENCIA, ESTADOS, UNIDADES, UNIDADES_CRUCE, CruceMes, FilaCruce,
+    ANTES_DEL_CORTE, CERO, CON_DIFERENCIA, ESTADOS, MES_EN_CURSO,
+    PENDIENTE_DE_FACTURAR, UNIDADES, UNIDADES_CRUCE, CruceMes, FilaCruce,
     LineaFacturada, cantidad_en_unidad, cruzar, cruzar_mes, medidas_por_tarea,
     tareas_sin_unidad,
 )
@@ -50,8 +53,8 @@ SIN_GRUPO = "Sin grupo"
 
 
 # ─── Excepciones ────────────────────────────────────────────────────────────
-# Las traduce el router a 422 con `detail` {tipo, mensaje, campo}. El mensaje
-# lo lee una persona.
+# Las traduce el router: a 422 con `detail` {tipo, mensaje, campo}, a 409 con
+# {tipo, mensaje} y a 404 con texto. El mensaje lo lee una persona.
 
 class ErrorResumen(Exception):
     mensaje = "No se pudo armar el Resumen."
@@ -90,6 +93,25 @@ class ConfiguracionInvalida(ErrorResumen):
     def __init__(self, campo: str, mensaje: str):
         self.campo = campo
         super().__init__(mensaje)
+
+
+class RevisionInvalida(ErrorResumen):
+    """422 `revision_invalida`, campo `comentario`: vacío o de más de
+    LARGO_COMENTARIO caracteres, contados sin los espacios de los bordes."""
+
+    def __init__(self, mensaje: str):
+        self.campo = "comentario"
+        super().__init__(mensaje)
+
+
+class NoRevisable(ErrorResumen):
+    """409 `no_revisable`: el mes no está Con diferencia. El mensaje dice por
+    qué, según el estado."""
+
+
+class SinRevision(ErrorResumen):
+    """409 `sin_revision`: el mes no tiene una Revisión vigente que deshacer."""
+    mensaje = "Este mes no tiene una Revisión para deshacer."
 
 
 # ─── Lecturas de la base propia, siempre frescas ────────────────────────────
@@ -355,6 +377,61 @@ class ResumenService:
             cruce=cruce,
         )
 
+    # ─── Revisión de diferencia (rutas 15 y 16) ─────────────────────────────
+
+    def revisar(self, cliente_id: int, mes: str, comentario: str | None,
+                usuario_id: int | None) -> dict:
+        """Deja una Revisión de diferencia en un Cliente y mes ("AAAA-MM") y
+        devuelve el Detalle (ruta 15).
+
+        El comentario se recorta en los bordes antes de medirlo, como en el
+        front, y se guarda recortado. Sólo se revisa un mes Con diferencia;
+        cualquier otro da NoRevisable. Guarda quién, cuándo y las (tarea,
+        unidad) que superaban, calculadas con datos_del_mes: el mismo Cruce,
+        con la misma caché del campo, que vio el Detalle. Una Revisión
+        anterior no se toca: la nueva pasa a ser la vigente por ser la más
+        reciente."""
+        inicio = _leer_mes(mes, "mes")
+        texto = _leer_comentario(comentario)
+        self._validar_cliente(cliente_id)
+
+        cruce = self.datos_del_mes(cliente_id, inicio).cruce
+        if CON_DIFERENCIA not in cruce.estados:
+            raise NoRevisable(_por_que_no_se_revisa(cruce))
+
+        self.db.add(RevisionDiferencia(
+            cliente_id=cliente_id, mes=inicio, comentario=texto,
+            creada_en=ahora_utc(), creada_por=usuario_id,
+            tareas=[RevisionTarea(tarea_id=tarea_id, unidad=unidad)
+                    for tarea_id, unidad in sorted(
+                        cruce.superan, key=lambda t: (t[0], _orden_unidad(t[1])))]))
+        self.db.commit()
+        return self.detalle(cliente_id, mes)
+
+    def deshacer_revision(self, cliente_id: int, mes: str,
+                          usuario_id: int | None) -> dict:
+        """Deshace la Revisión vigente de un Cliente y mes ("AAAA-MM") y
+        devuelve el Detalle (ruta 16). No la borra: sella `deshecha_en` y
+        `deshecha_por`, y queda en el registro. Sin una vigente, SinRevision.
+        No mira el estado del mes: se deshace aunque el Admin haya movido el
+        corte después."""
+        inicio = _leer_mes(mes, "mes")
+        self._validar_cliente(cliente_id)
+
+        vigente = revisiones_vigentes(self.db, inicio, inicio, cliente_id).get(
+            (cliente_id, inicio))
+        if vigente is None:
+            raise SinRevision()
+        vigente.deshecha_en = ahora_utc()
+        vigente.deshecha_por = usuario_id
+        self.db.commit()
+        return self.detalle(cliente_id, mes)
+
+    def _validar_cliente(self, cliente_id: int) -> None:
+        """El 404 del Detalle (ruta 14), antes de leer los partes."""
+        if cliente_id not in self.nombres_de_clientes({cliente_id}):
+            raise ClienteNoEncontrado()
+
     def _revision(self, vigente: RevisionDiferencia | None,
                   nombres_de_tareas: dict) -> dict | None:
         """La Revisión vigente como la pide la ruta 14, o None."""
@@ -406,6 +483,31 @@ def _leer_umbral(valor) -> Decimal:
             or umbral != umbral.quantize(_CENTESIMOS)):
         raise ConfiguracionInvalida("umbral_pct", mensaje)
     return umbral
+
+
+def _leer_comentario(comentario: str | None) -> str:
+    """El comentario de una Revisión sin los espacios de los bordes: no
+    vacío y de hasta LARGO_COMENTARIO caracteres."""
+    texto = (comentario or "").strip()
+    if not texto:
+        raise RevisionInvalida("Falta el comentario: por qué está bien la diferencia.")
+    if len(texto) > LARGO_COMENTARIO:
+        raise RevisionInvalida(
+            f"El comentario puede tener hasta {LARGO_COMENTARIO} caracteres.")
+    return texto
+
+
+def _por_que_no_se_revisa(cruce: CruceMes) -> str:
+    """El mensaje de NoRevisable, según el estado del mes."""
+    if ANTES_DEL_CORTE in cruce.estados:
+        return "El mes es anterior al Mes de corte: no se controla."
+    if MES_EN_CURSO in cruce.estados:
+        return "El mes todavía no terminó: se controla cuando termine."
+    if PENDIENTE_DE_FACTURAR in cruce.estados:
+        return "El mes no tiene nada facturado: falta cargar la factura, no revisarla."
+    if cruce.diferencia_revisada:
+        return "La diferencia de este mes ya está revisada."
+    return "Ninguna tarea supera el Umbral: no hay diferencia que revisar."
 
 
 def _validar_rango(desde: date, hasta: date, en_curso: date) -> None:

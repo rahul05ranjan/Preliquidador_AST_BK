@@ -1,0 +1,406 @@
+"""La Revisión de diferencia (plan de la E3, paso A9, y el contrato de las rutas
+15 y 16), sobre SQLite en memoria y con la consulta del campo falsa del
+Detalle.
+
+Lo que se cuida acá: el comentario es obligatorio y de hasta 500 caracteres,
+medidos después de recortar los espacios de los bordes; sólo se revisa un mes
+Con diferencia (cualquier otro estado da 409 `no_revisable`, con un mensaje
+según el estado); la Revisión guarda quién, cuándo y las (tarea, unidad) que
+superaban, calculadas con los mismos datos que vio el Detalle; con ella el mes
+queda Facturada y revisada, hasta que supere una tarea nueva; y deshacerla deja
+el registro sellado y el mes otra vez Con diferencia.
+
+Hoy es el 10 de noviembre de 2026: noviembre es el mes en curso y, con el
+corte inicial en octubre, octubre se controla y septiembre queda Antes del
+corte. Datos inventados.
+"""
+from datetime import date, datetime, timezone
+
+import pytest
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
+from app.core.database import Base
+from app.core.models import Usuario
+from app.modulos.facturacion import fechas
+from app.modulos.facturacion.models import RevisionDiferencia
+from app.modulos.facturacion.services import consulta_externa, resumen_service
+from app.modulos.facturacion.services.resumen_service import (
+    ClienteNoEncontrado, MesInvalido, NoRevisable, ResumenService, RevisionInvalida,
+    SinRevision,
+)
+from tests.facturacion import test_detalle as detalle_a8
+
+OCTUBRE = detalle_a8.OCTUBRE
+
+PODA = detalle_a8.PODA              # horas de peón
+RALEO = detalle_a8.RALEO            # plantas
+ATADO = detalle_a8.ATADO            # sin Unidad sugerida
+UNO, DOS, CUATRO, CINCO = (detalle_a8.UNO, detalle_a8.DOS, detalle_a8.CUATRO,
+                           detalle_a8.CINCO)
+SIN_NADA = detalle_a8.SIN_NADA      # ni en el maestro ni con Comprobantes
+
+DEJADA = datetime(2026, 11, 10, 15, 0)
+DESHECHA = datetime(2026, 11, 10, 16, 45)
+
+comprobante = detalle_a8.comprobante
+
+
+@pytest.fixture(autouse=True)
+def hoy_10_de_noviembre(monkeypatch):
+    monkeypatch.setattr(fechas, "_ahora",
+                        lambda: datetime(2026, 11, 10, 2, 0, tzinfo=timezone.utc))
+
+
+@pytest.fixture(autouse=True)
+def cache_limpia():
+    consulta_externa.invalidar_cache()
+    yield
+    consulta_externa.invalidar_cache()
+
+
+@pytest.fixture()
+def db():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    sesion = sessionmaker(bind=engine)()
+    yield sesion
+    sesion.close()
+    engine.dispose()
+
+
+@pytest.fixture()
+def consulta():
+    return detalle_a8.ConsultaFalsa()
+
+
+@pytest.fixture()
+def servicio(db, consulta):
+    return ResumenService(db, consulta)
+
+
+def _persona(db, nombre, email):
+    p = Usuario(nombre=nombre, email=email, password="x", rol="usuario")
+    db.add(p)
+    db.commit()
+    return p
+
+
+@pytest.fixture()
+def persona(db):
+    return _persona(db, "PERSONA DE PRUEBA", "persona@prueba.test")
+
+
+@pytest.fixture()
+def otra_persona(db):
+    return _persona(db, "OTRA PERSONA", "otra@prueba.test")
+
+
+@pytest.fixture()
+def reloj(monkeypatch):
+    """Reemplaza ahora_utc del servicio: devuelve la hora que se le fije."""
+    hora = {"ahora": DEJADA}
+    monkeypatch.setattr(resumen_service, "ahora_utc", lambda: hora["ahora"])
+    return hora
+
+
+def con_diferencia(db, consulta, cliente_id=UNO):
+    """Octubre Con diferencia: PODA trabajó 100 horas y se facturaron 150
+    (supera); RALEO, 300 plantas facturadas justas (no supera). Con PDF, así
+    no falta comprobante."""
+    consulta.parte(cliente_id, PODA, date(2026, 10, 3), jornal="100")
+    consulta.parte(cliente_id, RALEO, date(2026, 10, 5), unidades="300")
+    comprobante(db, cliente_id, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500"),
+                                 (RALEO, "plantas", date(2026, 10, 1), "300", "900")],
+                adjuntos=1)
+
+
+def revisiones(db):
+    return list(db.scalars(select(RevisionDiferencia).order_by(RevisionDiferencia.id)))
+
+
+def tareas_de(revision):
+    return {(t.tarea_id, t.unidad) for t in revision.tareas}
+
+
+# ─── Comentario ─────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("comentario", ["", "   ", "\n\t ", None])
+def test_el_comentario_es_obligatorio(db, servicio, consulta, persona, reloj, comentario):
+    con_diferencia(db, consulta)
+
+    with pytest.raises(RevisionInvalida) as error:
+        servicio.revisar(UNO, "2026-10", comentario, persona.id)
+
+    assert error.value.campo == "comentario"
+    assert error.value.mensaje
+    assert revisiones(db) == []
+
+
+def test_el_comentario_de_mas_de_500_da_error(db, servicio, consulta, persona, reloj):
+    con_diferencia(db, consulta)
+
+    with pytest.raises(RevisionInvalida) as error:
+        servicio.revisar(UNO, "2026-10", "x" * 501, persona.id)
+
+    assert error.value.campo == "comentario"
+    assert "500" in error.value.mensaje
+    assert revisiones(db) == []
+
+
+def test_el_largo_se_mide_despues_de_recortar_los_bordes(db, servicio, consulta, persona,
+                                                         reloj):
+    con_diferencia(db, consulta)
+
+    servicio.revisar(UNO, "2026-10", "  " + "x" * 500 + " \n", persona.id)
+
+    [guardada] = revisiones(db)
+    # Se guarda recortado: 500 justos, lo que entra en la columna.
+    assert guardada.comentario == "x" * 500
+
+
+# ─── Estados que no se revisan ──────────────────────────────────────────────
+
+def _pendiente(db, consulta, cliente_id=UNO):
+    consulta.parte(cliente_id, PODA, date(2026, 10, 3), jornal="100")
+
+
+def _antes_del_corte(db, consulta, cliente_id=UNO):
+    consulta.parte(cliente_id, PODA, date(2026, 9, 3), jornal="100")
+    comprobante(db, cliente_id, [(PODA, "horas_peon", date(2026, 9, 1), "150", "7500")],
+                adjuntos=1)
+
+
+def _mes_en_curso(db, consulta, cliente_id=UNO):
+    consulta.parte(cliente_id, PODA, date(2026, 11, 3), jornal="100")
+    comprobante(db, cliente_id, [(PODA, "horas_peon", date(2026, 11, 1), "150", "7500")],
+                adjuntos=1)
+
+
+def _facturada(db, consulta, cliente_id=UNO):
+    consulta.parte(cliente_id, PODA, date(2026, 10, 3), jornal="100")
+    comprobante(db, cliente_id, [(PODA, "horas_peon", date(2026, 10, 1), "100", "5000")],
+                adjuntos=1)
+
+
+@pytest.mark.parametrize("preparar, mes, estado", [
+    (_pendiente, "2026-10", "pendiente_de_facturar"),
+    (_antes_del_corte, "2026-09", "antes_del_corte"),
+    (_mes_en_curso, "2026-11", "mes_en_curso"),
+    (_facturada, "2026-10", "facturada"),
+])
+def test_solo_se_revisa_un_mes_con_diferencia(db, servicio, consulta, persona, reloj,
+                                              preparar, mes, estado):
+    preparar(db, consulta)
+    assert estado in servicio.detalle(UNO, mes)["estados"]
+
+    with pytest.raises(NoRevisable) as error:
+        servicio.revisar(UNO, mes, "Explicada.", persona.id)
+
+    assert error.value.mensaje
+    assert revisiones(db) == []
+
+
+def test_el_mensaje_de_no_revisable_depende_del_estado(db, servicio, consulta, persona,
+                                                       reloj):
+    mensajes = {}
+    casos = [(_pendiente, UNO, "2026-10"), (_antes_del_corte, DOS, "2026-09"),
+             (_mes_en_curso, CUATRO, "2026-11"), (_facturada, CINCO, "2026-10")]
+    for preparar, cliente_id, mes in casos:
+        preparar(db, consulta, cliente_id)
+        with pytest.raises(NoRevisable) as error:
+            servicio.revisar(cliente_id, mes, "Explicada.", persona.id)
+        mensajes[preparar.__name__] = error.value.mensaje
+
+    # Cuatro estados, cuatro mensajes distintos.
+    assert len(set(mensajes.values())) == 4, mensajes
+
+
+def test_un_mes_ya_revisado_no_se_vuelve_a_revisar(db, servicio, consulta, persona, reloj):
+    con_diferencia(db, consulta)
+    servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    with pytest.raises(NoRevisable) as error:
+        servicio.revisar(UNO, "2026-10", "Otra vez.", persona.id)
+
+    assert error.value.mensaje
+    assert len(revisiones(db)) == 1
+
+
+# ─── Qué guarda ─────────────────────────────────────────────────────────────
+
+def test_guarda_quien_cuando_y_las_tareas_que_superaban(db, servicio, consulta, persona,
+                                                        reloj):
+    con_diferencia(db, consulta)
+    # ATADO no tiene unidad: trabajada y sin facturar, supera sin unidad.
+    consulta.parte(UNO, ATADO, date(2026, 10, 4), jornal="6")
+    # Otro Cliente con diferencia en el mismo mes: no entra.
+    con_diferencia(db, consulta, cliente_id=DOS)
+
+    servicio.revisar(UNO, "2026-10", "  Acordado con el Cliente.  ", persona.id)
+
+    [guardada] = revisiones(db)
+    assert guardada.cliente_id == UNO
+    assert guardada.mes == OCTUBRE
+    assert guardada.comentario == "Acordado con el Cliente."
+    assert guardada.creada_en == DEJADA
+    assert guardada.creada_por == persona.id
+    assert (guardada.deshecha_en, guardada.deshecha_por) == (None, None)
+    # Las que superaban; RALEO, que no superaba, no.
+    assert tareas_de(guardada) == {(PODA, "horas_peon"), (ATADO, None)}
+
+
+def test_lee_los_partes_del_mes_sin_vaciar_la_cache(db, servicio, consulta, persona, reloj,
+                                                    monkeypatch):
+    con_diferencia(db, consulta)
+
+    def no_vaciar():
+        raise AssertionError("La Revisión no vuelve a leer el campo.")
+    monkeypatch.setattr(resumen_service, "invalidar_cache_cruce", no_vaciar)
+
+    servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    assert ("partes", UNO, OCTUBRE, date(2026, 10, 31)) in consulta.lecturas
+
+
+# ─── El efecto de una Revisión ──────────────────────────────────────────────
+
+def test_devuelve_el_detalle_facturada_y_revisada(db, servicio, consulta, persona, reloj):
+    con_diferencia(db, consulta)
+
+    detalle = servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    [guardada] = revisiones(db)
+    assert detalle["cliente_id"] == UNO
+    assert detalle["mes"] == OCTUBRE
+    assert (detalle["estados"], detalle["diferencia_revisada"]) == (["facturada"], True)
+    assert detalle["se_puede_revisar"] is False
+    assert detalle["revision"]["id"] == guardada.id
+    assert detalle["revision"]["creada_por_nombre"] == "PERSONA DE PRUEBA"
+    assert detalle["revision"]["tareas"] == [
+        {"tarea_id": PODA, "tarea_nombre": "PODA", "unidad": "horas_peon"}]
+    # Y el Resumen dice lo mismo.
+    [fila] = servicio.resumen("2026-10", "2026-10")["filas"]
+    assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
+
+
+def test_una_tarea_nueva_que_supera_pide_otra_revision(db, servicio, consulta, persona,
+                                                       otra_persona, reloj):
+    con_diferencia(db, consulta)
+    primera = servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)["revision"]
+
+    # Llega otro parte de RALEO: 400 plantas trabajadas y 300 facturadas.
+    consulta.parte(UNO, RALEO, date(2026, 10, 20), unidades="100")
+    detalle = servicio.detalle(UNO, "2026-10")
+    assert (detalle["estados"], detalle["diferencia_revisada"]) == (["con_diferencia"], False)
+    assert detalle["se_puede_revisar"] is True
+
+    reloj["ahora"] = DESHECHA
+    detalle = servicio.revisar(UNO, "2026-10", "También RALEO.", otra_persona.id)
+
+    vieja, nueva = revisiones(db)
+    assert vieja.id == primera["id"]
+    assert tareas_de(nueva) == {(PODA, "horas_peon"), (RALEO, "plantas")}
+    assert (nueva.creada_por, nueva.creada_en) == (otra_persona.id, DESHECHA)
+    # La nueva es la vigente, y cubre las dos.
+    assert detalle["revision"]["id"] == nueva.id
+    assert detalle["revision"]["comentario"] == "También RALEO."
+    assert (detalle["estados"], detalle["diferencia_revisada"]) == (["facturada"], True)
+
+
+def test_si_no_supera_ninguna_queda_facturada_sin_nota(db, servicio, consulta, persona,
+                                                       reloj):
+    con_diferencia(db, consulta)
+    servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    # Una Nota de crédito corrige PODA: 150 - 50 = 100, lo trabajado.
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "50", "2500")],
+                tipo="nota_credito", adjuntos=1)
+    detalle = servicio.detalle(UNO, "2026-10")
+
+    assert (detalle["estados"], detalle["diferencia_revisada"]) == (["facturada"], False)
+    assert detalle["se_puede_revisar"] is False
+    # La Revisión queda en el registro.
+    [guardada] = revisiones(db)
+    assert guardada.deshecha_en is None
+
+
+# ─── Deshacer ───────────────────────────────────────────────────────────────
+
+def test_deshacer_sella_el_registro_y_el_mes_vuelve_a_con_diferencia(
+        db, servicio, consulta, persona, otra_persona, reloj):
+    con_diferencia(db, consulta)
+    servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    reloj["ahora"] = DESHECHA
+    detalle = servicio.deshacer_revision(UNO, "2026-10", otra_persona.id)
+
+    # No se borra: queda con quién y cuándo la deshizo, y con sus tareas.
+    [guardada] = revisiones(db)
+    assert (guardada.deshecha_en, guardada.deshecha_por) == (DESHECHA, otra_persona.id)
+    assert (guardada.creada_en, guardada.creada_por) == (DEJADA, persona.id)
+    assert guardada.comentario == "Explicada."
+    assert tareas_de(guardada) == {(PODA, "horas_peon")}
+    # Devuelve el Detalle, otra vez Con diferencia y sin Revisión vigente.
+    assert (detalle["estados"], detalle["diferencia_revisada"]) == (["con_diferencia"], False)
+    assert detalle["se_puede_revisar"] is True
+    assert detalle["revision"] is None
+
+
+def test_deshacer_sin_revision_vigente_da_409(db, servicio, consulta, persona, reloj):
+    con_diferencia(db, consulta)
+
+    with pytest.raises(SinRevision) as error:
+        servicio.deshacer_revision(UNO, "2026-10", persona.id)
+
+    assert error.value.mensaje
+
+
+def test_deshacer_dos_veces_da_409(db, servicio, consulta, persona, reloj):
+    con_diferencia(db, consulta)
+    servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+    servicio.deshacer_revision(UNO, "2026-10", persona.id)
+
+    reloj["ahora"] = DESHECHA
+    with pytest.raises(SinRevision):
+        servicio.deshacer_revision(UNO, "2026-10", persona.id)
+
+    # El sello de la primera vez no cambia.
+    [guardada] = revisiones(db)
+    assert guardada.deshecha_en == DEJADA
+
+
+def test_deshacer_otro_mes_no_toca_la_revision(db, servicio, consulta, persona, reloj):
+    con_diferencia(db, consulta)
+    servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    with pytest.raises(SinRevision):
+        servicio.deshacer_revision(UNO, "2026-09", persona.id)
+    with pytest.raises(SinRevision):
+        servicio.deshacer_revision(DOS, "2026-10", persona.id)
+
+    [guardada] = revisiones(db)
+    assert guardada.deshecha_en is None
+
+
+# ─── 404 y mes inválido ─────────────────────────────────────────────────────
+
+def test_un_cliente_que_no_existe_da_404(db, servicio, consulta, persona, reloj):
+    consulta.parte(SIN_NADA, PODA, date(2026, 10, 3), jornal="100")
+
+    with pytest.raises(ClienteNoEncontrado):
+        servicio.revisar(SIN_NADA, "2026-10", "Explicada.", persona.id)
+    with pytest.raises(ClienteNoEncontrado):
+        servicio.deshacer_revision(SIN_NADA, "2026-10", persona.id)
+
+    assert revisiones(db) == []
+
+
+@pytest.mark.parametrize("mes", ["2026-13", "2026-9", "x"])
+def test_mes_invalido(servicio, consulta, persona, reloj, mes):
+    with pytest.raises(MesInvalido) as error:
+        servicio.revisar(UNO, mes, "Explicada.", persona.id)
+    assert error.value.campo == "mes"
+    with pytest.raises(MesInvalido):
+        servicio.deshacer_revision(UNO, mes, persona.id)
+    assert consulta.lecturas == []
