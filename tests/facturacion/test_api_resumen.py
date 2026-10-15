@@ -54,6 +54,8 @@ FILA = {
 RESUMEN = {
     "umbral_pct": D("5.00"), "mes_corte": date(2026, 10, 1),
     "mes_en_curso": date(2026, 11, 1), "leido_en": datetime(2026, 11, 10, 13, 30),
+    "actualizado_en": datetime(2026, 11, 10, 16, 0),
+    "actualizado_por_nombre": "PERSONA DE PRUEBA",
     "filas": [FILA],
     "tareas_sin_unidad": [{"tarea_id": 106, "nombre": "ATADO", "clientes": 2}],
     "sobra": "no va",
@@ -100,7 +102,7 @@ CONFIGURACION = {
 
 # Las claves de cada respuesta, copiadas de la sección 3.2 del plan.
 CLAVES_RESUMEN = {"umbral_pct", "mes_corte", "mes_en_curso", "leido_en", "filas",
-                  "tareas_sin_unidad"}
+                  "tareas_sin_unidad", "actualizado_en", "actualizado_por_nombre"}
 CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "horas_peon", "horas_tractor",
                "tancadas", "plantas", "hectareas", "facturado_neto", "estados",
                "diferencia_revisada", "comprobantes_sin_adjunto"}
@@ -225,6 +227,8 @@ def test_el_resumen_sale_con_la_forma_del_contrato():
     assert cuerpo["mes_corte"] == "2026-10"
     assert cuerpo["mes_en_curso"] == "2026-11"
     assert cuerpo["leido_en"] == "2026-11-10T13:30:00"
+    assert cuerpo["actualizado_en"] == "2026-11-10T16:00:00"
+    assert cuerpo["actualizado_por_nombre"] == "PERSONA DE PRUEBA"
     assert cuerpo["tareas_sin_unidad"] == [{"tarea_id": 106, "nombre": "ATADO", "clientes": 2}]
     fila = cuerpo["filas"][0]
     assert set(fila) == CLAVES_FILA
@@ -521,6 +525,31 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     resumen = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10").json()
     assert resumen["umbral_pct"] == "60.00"
     assert resumen["filas"][0]["estados"] == ["facturada"]
+
+
+def test_el_resumen_trae_el_ultimo_cambio_de_la_configuracion(real):
+    """El pie del Resumen muestra quién y cuándo cambió la configuración
+    (A10b). Sin cambios, los dos llegan null; después de un PUT, la fecha y
+    el nombre de quien la cambió."""
+    _con_diferencia(real)
+    c = real.c
+
+    r = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10")
+    assert r.status_code == 200, r.text
+    resumen = r.json()
+    assert resumen["actualizado_en"] is None
+    assert resumen["actualizado_por_nombre"] is None
+
+    r = c.put(f"{F}/configuracion", json={"umbral_pct": "60", "mes_corte": "2026-09"})
+    assert r.status_code == 200, r.text
+    cambio = r.json()
+
+    r = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10")
+    assert r.status_code == 200, r.text
+    resumen = r.json()
+    assert resumen["actualizado_en"] is not None
+    assert resumen["actualizado_en"] == cambio["actualizado_en"]
+    assert resumen["actualizado_por_nombre"] == "PERSONA DE PRUEBA"
 
 
 @pytest.mark.parametrize("ruta, campo", [

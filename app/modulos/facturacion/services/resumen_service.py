@@ -261,7 +261,7 @@ class ResumenService:
     def resumen(self, desde: str, hasta: str, refrescar: bool = False) -> dict:
         """El Resumen de los meses de desde a hasta ("AAAA-MM", los dos
         incluidos): {umbral_pct, mes_corte, mes_en_curso, leido_en, filas,
-        tareas_sin_unidad}.
+        tareas_sin_unidad, actualizado_en, actualizado_por_nombre}.
 
         El rango se valida antes de leer el campo. Con refrescar, la caché del
         Cruce se vacía antes de leer ("Volver a leer"). `leido_en` es la más
@@ -297,6 +297,8 @@ class ResumenService:
             "leido_en": min(trabajado["leido_en"], tareas["leido_en"]),
             "filas": filas,
             "tareas_sin_unidad": tareas_sin_unidad(visibles),
+            "actualizado_en": configuracion["actualizado_en"],
+            "actualizado_por_nombre": configuracion["actualizado_por_nombre"],
         }
 
     # ─── Detalle (ruta 14) ──────────────────────────────────────────────────

@@ -195,6 +195,10 @@ class Resumen(BaseModel):
     leido_en: datetime
     filas: list[FilaResumen]
     tareas_sin_unidad: list[TareaSinUnidad]
+    # El último cambio de la configuración, para el pie de la pantalla; None
+    # si nadie la cambió.
+    actualizado_en: datetime | None = None
+    actualizado_por_nombre: str | None = None
 
 
 class ComprobanteDelMes(BaseModel):

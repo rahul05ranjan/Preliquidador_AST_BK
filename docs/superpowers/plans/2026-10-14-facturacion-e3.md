@@ -39,6 +39,12 @@ históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de lo
   `tareas_sin_precio`. Archivos: `resumen_service.py` y `tests/facturacion/test_detalle.py`. Va
   después del A9, que toca el mismo servicio. Un mes futuro en el Detalle sigue como Mes en curso,
   sin 422 (decisión del usuario, 2026-10-15).
+- **A10b. Par: el Resumen trae el último cambio de la configuración** (decisión del usuario,
+  2026-10-15, por el FRENADO del FA5). El boceto aprobado muestra en el pie "Último cambio: quién,
+  cuándo", y la ruta 13 no lo traía. El schema `Resumen` suma `actualizado_en: datetime | None` y
+  `actualizado_por_nombre: str | None`, opcionales, que salen de `ResumenService.configuracion()`
+  (`None` si nadie la cambió). Archivos: `schemas.py`, `api/resumen.py` (o el servicio, si el
+  Resumen se arma ahí) y `tests/facturacion/test_api_resumen.py`. El front ya los lee: no cambia.
 - **Comentario de la Revisión** (A9): se recortan los espacios de los bordes antes de medir el
   largo, igual que el front (FA4).
 
@@ -406,7 +412,7 @@ Descartado: comparar dentro de la app. Mostraría una medida que el producto no 
 | 18 | `GET /api/facturacion/precarga?cliente_id=&desde=AAAA-MM-DD&hasta=AAAA-MM-DD` | `comprobantes`, editar | E3b |
 
 **13. Resumen**
-- Respuesta: `{umbral_pct, mes_corte, mes_en_curso, leido_en, filas, tareas_sin_unidad}`.
+- Respuesta: `{umbral_pct, mes_corte, mes_en_curso, leido_en, filas, tareas_sin_unidad, actualizado_en, actualizado_por_nombre}` (los dos últimos, `null` si nadie cambió la configuración; A10b).
 - Cada fila trae:
   - `cliente_id`, `cliente_nombre` y `mes`;
   - `horas_peon`, `horas_tractor`, `tancadas`, `plantas`, `hectareas` y `facturado_neto`, como texto decimal; el neto, con signo;
