@@ -2,7 +2,7 @@
 
 Sólo lo vivo: lo que está en curso, el próximo paso, lo que espera al usuario y lo que quedó para más adelante.
 Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva abajo). La regla está en
-`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-14**.
+`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-15**.
 
 ## En curso
 
@@ -10,11 +10,13 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   E3a. Plan en `docs/superpowers/plans/2026-10-14-facturacion-e3.md` de la rama `feature/facturacion-e3`
   (worktrees `.claude/worktrees/facturacion-e3` en los dos repos). Se parte en E3a (Resumen, Detalle,
   Revisión, migraciones 004 y 005) y E3b (Precarga, Período facturado y migración 006), cada una con PRs
-  hermanos.
+  hermanos. E3a: backend del A0 al A13 hecho (con el A10b, el último cambio de la
+  configuración en el Resumen), front del FA0 al FA6 hecho y las migraciones 004 y 005 aplicadas en
+  `testing` (2026-10-15).
 
 ## Próximo paso
 
-Ejecutar la E3a con el `ejecutor`, par por par, desde el A1 (claves de pantalla). Antes de los pasos visuales del front, los bocetos de F0 con OK del usuario. Toda migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su rol (2026-10-13).
+El usuario compara contra Power BI el CSV del cruce de julio a septiembre (F5) y anota cada diferencia con su causa; con eso va el A12 (docs). En paralelo, el FA7 (suite del front y `impeccable`), la revisión de código (dos rondas, por las migraciones), el smoke F4 contra `testing` y los PRs hermanos de la E3a. Toda migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su rol (2026-10-13).
 
 ## Pendientes del usuario
 
