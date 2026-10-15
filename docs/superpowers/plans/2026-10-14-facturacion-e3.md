@@ -1264,6 +1264,34 @@ SECRET_KEY=clave-de-prueba-solo-para-tests python -m pytest -q
 - `/impeccable critique` y `/impeccable audit` en el front.
 - El diff, sin nombres de clientes, tareas reales, personas, valores ni hosts.
 
+### 3.10 Arreglos de la revisión de la E3a
+
+Primera ronda: 0 urgent, 3 high (todos del front). Los minor van al cuerpo de los PRs.
+
+- **Paso R1 (par).** El Detalle pinta "—" para el cero y para el vacío (`medidaVacia` en
+  `Medida`, `pages/Detalle.jsx`). Falla: una tarea trabajada y no facturada muestra Campo "—",
+  Facturado "—", Diferencia "0" y "Supera"; no se entiende de dónde sale la diferencia.
+  Arreglo: en el Detalle, un valor numérico (cero incluido) se muestra con `textoMedida` sin la
+  regla del cero; la raya queda sólo para null o ilegible. El Resumen no cambia. Test rojo: la
+  medida del Detalle con `"0.00"` muestra "0" y con null, "—". Hecho con `medidaIlegible` y
+  `textoMedida(valor, { conCero: true })`; en el smoke, la comparación del panel de la misma
+  tarea seguía diciendo Campo "—", así que Campo y Facturado del panel también muestran el
+  cero (los partes no).
+- **Paso R2 (visual, sin test).** Con el panel lateral abierto (360 px), a 1366 de ancho,
+  Facturado, Diferencia y Dif. % del Detalle quedan fuera de la vista. Arreglo en
+  `Detalle.module.css`: con el panel abierto, la columna "Grupo · tarea" se corta con
+  `max-width` y `text-overflow: ellipsis` (el nombre completo en `title`). Se verifica en el
+  navegador a 1366 con el panel abierto. Hecho: el nombre a 16ch, el relleno de las celdas a
+  6 px y el rótulo de la fila TOTAL en dos renglones, sólo con el panel abierto. A 1366 entran
+  hasta Dif. %; Marcas queda con scroll horizontal, y el "Supera" de la tarea elegida también
+  está en el panel.
+- **Paso R3 (texto).** Los cuadros de Alertas cuentan filas de mes y Cliente (lo pide 3.5) pero
+  dicen "clientes" y "facturas". Falla: con Últimos 3 meses, un Cliente pendiente en dos meses
+  cuenta 2 "clientes". Arreglo, decidido por el usuario (2026-10-15): se sigue contando filas y
+  cambia el texto, en `TEXTOS_CUADRO` de `vistaResumen.js`: "meses de cliente pendientes de
+  facturar", "meses de cliente con diferencia" y "meses de cliente con facturas sin PDF" (en
+  singular, "mes de cliente…"). Test: `textoDeCuadro` con los textos nuevos.
+
 ## 4. Riesgos
 
 1. **Lentitud del campo.** En desarrollo, la primera lectura después de un rato tardó cerca de un minuto, y nginx puede cortar un pedido largo.
