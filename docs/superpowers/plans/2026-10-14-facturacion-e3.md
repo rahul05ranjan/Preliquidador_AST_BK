@@ -33,6 +33,12 @@ históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de lo
   sugerido: `precios_sugeridos` no devuelve esa clave (no se busca una Factura anterior). En el
   Detalle la tarea cuenta en `tareas_sin_precio`; en la Precarga el precio queda vacío. Porqué:
   un precio 0 suele ser un error de carga.
+- **A8b. Par: precio medio 0 es "sin precio"** (decisión del usuario, 2026-10-15, la misma regla
+  del A7b). En el Detalle, si el precio medio de las Facturas del mes para una (tarea, unidad) da 0
+  o menos, esa fila no tiene precio: no cae al Precio sugerido y la tarea cuenta en
+  `tareas_sin_precio`. Archivos: `resumen_service.py` y `tests/facturacion/test_detalle.py`. Va
+  después del A9, que toca el mismo servicio. Un mes futuro en el Detalle sigue como Mes en curso,
+  sin 422 (decisión del usuario, 2026-10-15).
 - **Comentario de la Revisión** (A9): se recortan los espacios de los bordes antes de medir el
   largo, igual que el front (FA4).
 

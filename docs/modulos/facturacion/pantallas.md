@@ -38,6 +38,8 @@ mismos números que el informe de Power BI que hoy hace ese control.
     y Falta comprobante), cada uno con su cantidad. Tocar uno filtra la tabla por esa Alerta.
   - Barra de filtros: período con atajos (Mes pasado, Este mes, Últimos 3 meses, Este año, Otro
     período) y seleccionables de Mes, Cliente y Estado. Arranca en el mes pasado.
+  - Arriba a la derecha, "Datos del campo de las HH:MM · Volver a leer": la hora de la lectura
+    más vieja del sistema de campo que usa la pantalla, y un link que la vuelve a leer.
   - Debajo de los cuadros y de la barra, sobre la tabla, un aviso cuando hay tareas facturables
     sin Unidad sugerida con trabajo en el período: cuántas son, un desplegable con cada tarea y
     en cuántos Clientes, y que se definen en la app de campo. No es una Alerta: no entra en los
