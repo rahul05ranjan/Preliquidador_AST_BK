@@ -5,8 +5,9 @@ Lo que se cuida acá: por cada (tarea, unidad) gana la última Factura del
 mismo Cliente, en el orden de la ruta 18 (mes de la Línea descendente,
 después la fecha del Comprobante descendente, después el id descendente);
 las Notas de crédito, los históricos pendientes de facturar y los otros
-Clientes no cuentan, y los históricos sí; y la empresa sugerida es la de la
-última Factura que tiene empresa. Datos inventados.
+Clientes no cuentan, y los históricos sí; si esa última Factura tiene precio
+0 o menos, no hay Precio sugerido (paso A7b); y la empresa sugerida es la de
+la última Factura que tiene empresa. Datos inventados.
 """
 from datetime import date
 from decimal import Decimal
@@ -197,6 +198,33 @@ def test_dos_lineas_iguales_en_una_factura_gana_la_ultima(db):
                 fecha=date(2026, 9, 20))
 
     assert precio(db, PODA, "horas_peon") == D("120")
+
+
+# ─── Precio 0 o menos: sin precio (A7b) ─────────────────────────────────────
+
+@pytest.mark.parametrize("precio_ultimo", ["0", "-50"])
+def test_si_la_ultima_factura_tiene_precio_0_o_menos_no_hay_precio(db, precio_ultimo):
+    # Un precio 0 suele ser un error de carga: no se sugiere, y tampoco se
+    # busca una Factura anterior, aunque tenga precio.
+    comprobante(db, [(PODA, "horas_peon", AGOSTO_1, "100")], fecha=date(2026, 8, 20))
+    comprobante(db, [(PODA, "horas_peon", SEPTIEMBRE_1, precio_ultimo),
+                     (RALEO, "plantas", SEPTIEMBRE_1, "7")],
+                fecha=date(2026, 9, 20))
+
+    precios = precios_sugeridos(db, UNO)
+
+    assert (PODA, "horas_peon") not in precios
+    # Las otras (tarea, unidad) de esa misma Factura siguen sugiriendo.
+    assert precios[(RALEO, "plantas")]["precio_unitario"] == D("7")
+
+
+def test_un_precio_0_no_cambia_la_empresa_sugerida(db):
+    comprobante(db, [(PODA, "horas_peon", AGOSTO_1, "100")], empresa="EMPRESA UNO",
+                fecha=date(2026, 8, 20))
+    comprobante(db, [(PODA, "horas_peon", SEPTIEMBRE_1, "0")], empresa="EMPRESA DOS",
+                fecha=date(2026, 9, 20))
+
+    assert empresa_sugerida(db, UNO) == "EMPRESA DOS"
 
 
 # ─── Empresa sugerida ───────────────────────────────────────────────────────

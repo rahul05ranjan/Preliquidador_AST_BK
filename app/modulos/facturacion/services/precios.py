@@ -55,7 +55,11 @@ def precios_sugeridos(db: Session, cliente_id: int) -> dict[tuple[int, str], dic
     comprobante_id, numero, fecha}}, donde `fecha` es la del Comprobante (None
     en un histórico sin fecha). Los valores son los `precios` de la ruta 18.
     Si la misma (tarea, unidad) aparece dos veces en esa Factura, vale la
-    última Línea por orden."""
+    última Línea por orden.
+
+    Si ese último precio es 0 o menos, la (tarea, unidad) no tiene Precio
+    sugerido y no se devuelve, sin buscar una Factura anterior (paso A7b,
+    decisión del usuario): un precio 0 suele ser un error de carga."""
     mejores: dict[tuple[int, str], tuple] = {}
     for (comprobante_id, numero, fecha, _empresa, orden, fecha_linea, tarea_id,
          unidad, precio_unitario) in _lineas_de_facturas(db, cliente_id):
@@ -67,7 +71,8 @@ def precios_sugeridos(db: Session, cliente_id: int) -> dict[tuple[int, str], dic
                 "precio_unitario": precio_unitario,
                 "comprobante_id": comprobante_id, "numero": numero, "fecha": fecha,
             })
-    return {par: precio for par, (_clave, precio) in mejores.items()}
+    return {par: precio for par, (_clave, precio) in mejores.items()
+            if precio["precio_unitario"] > 0}
 
 
 def empresa_sugerida(db: Session, cliente_id: int) -> str | None:
