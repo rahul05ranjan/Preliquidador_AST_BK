@@ -546,7 +546,11 @@ def _precios(cruce: CruceMes, sugeridos: dict) -> dict:
     """El precio de cada (tarea, unidad) del Cruce (decisión 6, pesos del
     Detalle): el precio medio de las Facturas del mes que cuentan
     (Σimporte / Σcantidad) y, si no hay, el Precio sugerido. Una fila sin
-    unidad o sin ninguno de los dos no figura: queda sin valorizar."""
+    unidad o sin ninguno de los dos no figura: queda sin valorizar.
+
+    Si el precio medio del mes da 0 o menos, la fila tampoco figura y no cae
+    al Precio sugerido (paso A8b, decisión del usuario, la misma regla que
+    el A7b para el sugerido): un precio 0 suele ser un error de carga."""
     sumas: dict[tuple, list[Decimal]] = defaultdict(lambda: [CERO, CERO])
     for linea in cruce.lineas:
         if linea.tipo == FACTURA:
@@ -560,8 +564,9 @@ def _precios(cruce: CruceMes, sugeridos: dict) -> dict:
             continue
         importe, cantidad = sumas.get(clave, (CERO, CERO))
         if cantidad:
-            precios[clave] = (importe / cantidad).quantize(
-                _DIEZMILESIMOS, rounding=ROUND_HALF_UP)
+            medio = (importe / cantidad).quantize(_DIEZMILESIMOS, rounding=ROUND_HALF_UP)
+            if medio > 0:
+                precios[clave] = medio
         elif clave in sugeridos:
             precios[clave] = sugeridos[clave]["precio_unitario"]
     return precios

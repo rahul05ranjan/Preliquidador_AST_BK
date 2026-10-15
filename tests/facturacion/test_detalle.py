@@ -5,7 +5,7 @@ Lo que se cuida acá: el Campo de cada fila es la suma de sus partes en su
 unidad, y una tarea en dos unidades muestra los mismos partes con la medida de
 cada fila; las tareas van por grupo; los pesos salen del precio medio de las
 Facturas del mes, si no del Precio sugerido, y si tampoco hay la tarea queda
-sin precio; la Revisión vigente trae quién la dejó y el nombre de cada tarea
+sin precio (también si el precio medio da 0 o menos, paso A8b); la Revisión vigente trae quién la dejó y el nombre de cada tarea
 (del maestro o, si no está ahí, de las Líneas del mes); los estados son los
 del Resumen para el mismo mes, porque los dos pasan por el mismo motor; y el
 404 sigue la regla del contrato.
@@ -33,6 +33,7 @@ from app.modulos.facturacion.models import (
     Adjunto, Comprobante, LineaComprobante, RevisionDiferencia, RevisionTarea,
 )
 from app.modulos.facturacion.services import consulta_externa
+from app.modulos.facturacion.services.precios import precios_sugeridos
 from app.modulos.facturacion.services.resumen_service import (
     ClienteNoEncontrado, MesInvalido, ResumenService,
 )
@@ -409,6 +410,35 @@ def test_una_tarea_en_dos_unidades_cuenta_una_vez_sin_precio(db, servicio, consu
         "diferencia_pct": None,
         "tareas_sin_precio": 1,
     }
+
+
+@pytest.mark.parametrize("importe, precio", [
+    ("0", "0"),          # precio medio 0
+    ("-100", "-10"),     # precio medio negativo
+])
+def test_un_precio_medio_de_0_o_menos_deja_la_tarea_sin_precio(db, servicio, consulta,
+                                                                importe, precio):
+    # Paso A8b, decisión del usuario: la misma regla que el Precio sugerido
+    # (A7b). Un precio medio del mes de 0 o menos no es un precio y no cae al
+    # Precio sugerido, aunque lo haya.
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="10")
+    consulta.parte(UNO, RALEO, date(2026, 10, 5), unidades="100")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "10", importe, precio)],
+                adjuntos=1)
+    # Una Factura posterior, a 50 la hora: PODA tiene Precio sugerido.
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 11, 1), "10", "500", "50")],
+                adjuntos=1)
+    comprobante(db, UNO, [(RALEO, "plantas", date(2026, 10, 1), "100", "300", "3")],
+                adjuntos=1)
+    assert precios_sugeridos(db, UNO)[(PODA, "horas_peon")]["precio_unitario"] == D("50")
+
+    detalle = servicio.detalle(UNO, "2026-10")
+
+    assert fila(detalle, PODA)["precio"] is None
+    assert fila(detalle, RALEO)["precio"] == D("3")
+    # Sólo RALEO se valoriza: 100 × 3.
+    assert detalle["total"]["campo_pesos"] == D("300")
+    assert detalle["total"]["tareas_sin_precio"] == 1
 
 
 # ─── Revisión ───────────────────────────────────────────────────────────────
