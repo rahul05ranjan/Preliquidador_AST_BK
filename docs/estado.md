@@ -11,13 +11,14 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   planificador), en `docs/superpowers/plans/2026-10-17-facturacion-e3a-por-grupo.md` de la rama
   `feature/facturacion-e3`; reemplaza lo que el plan del 2026-10-14 dice del cruce por tarea, el filtro
   por meses, la Revisión por tarea y el script del cruce. Fase 3: Ticket 1 (Resumen por grupo y
-  migración 006) en curso, con el 5b (docs) en paralelo, cada uno en su rama `feature/facturacion-e3-t1`
-  y `-t5b`. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
+  migración 006) en curso en la rama `feature/facturacion-e3-t1`; el 5b (docs) ya está mergeado en
+  `feature/facturacion-e3`. La spec se corrigió con el usuario: se guardan todas las Revisiones por
+  período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
   base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
 
 ## Próximo paso
 
-Juntar el Ticket 1 y el 5b en `feature/facturacion-e3`, aplicar la 006 en `testing` con respaldo y OK, y
+Mergear el Ticket 1 en `feature/facturacion-e3`, aplicar la 006 en `testing` con respaldo y OK, y
 seguir con los Tickets 2, 3, 4 y 5a en serie. Después, revisión de código, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
