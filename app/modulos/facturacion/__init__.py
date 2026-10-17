@@ -7,12 +7,12 @@ agrícolas; la cosecha queda fuera. Ver docs/modulos/facturacion/.
 
 Activo desde la E1 (2026-10-11), con sus cinco pantallas declaradas para el
 editor de roles. La pantalla de la E1 se retiró el 2026-10-12; la E2 monta
-las rutas de Comprobantes."""
+las rutas de Comprobantes, y la E3 las del Resumen."""
 from app.core.modulos import ModuloInfo
-from app.modulos.facturacion.api import comprobantes
+from app.modulos.facturacion.api import comprobantes, resumen
 from app.modulos.facturacion.permisos import PANTALLAS
 
-routers = [comprobantes.router]
+routers = [comprobantes.router, resumen.router]
 
 MODULO = ModuloInfo(
     clave="facturacion", nombre="Facturación",

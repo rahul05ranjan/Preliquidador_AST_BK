@@ -79,7 +79,8 @@ facturado.
   qué mes cuenta: se propone solo y la contadora lo puede cambiar al mes anterior, a una
   quincena o a otros días. **Queda siempre dentro de un mismo mes**: si una factura cobrara
   trabajo de dos meses, el Resumen no sabría dónde contarla, y el usuario confirmó que no pasa.
-  Reemplaza a la fecha por Línea del diseño anterior (cualquier día del mes). Finca opcional.
+  Reemplaza a la fecha por Línea del diseño anterior (cualquier día del mes). La Precarga no
+  pide finca: una Línea que ya la tenía la conserva al editarse.
 
 ### 3.2 La carga
 
@@ -129,14 +130,25 @@ facturado.
 - Decidido el 2026-10-11, al planificar la etapa 1. Descartado: la unidad fija por tarea del
   diseño original ("Grupo de facturación"), porque una tarea que un cliente pide facturar por
   hora y otro por planta comparaba horas contra plantas.
-- Pendiente para el plan de la etapa 3: qué muestra el Cruce cuando una misma tarea se factura
-  en dos unidades dentro del mes.
+- **Una tarea facturada en dos unidades dentro del mes** (2026-10-14): el Detalle muestra una
+  fila por unidad, cada una contra la Cantidad del campo en su unidad y medida contra el Umbral
+  de diferencia por separado, con la marca de que la tarea va en dos unidades. En el Resumen, la
+  tarea suma en la columna de cada unidad. Plantas y hectáreas leen la misma medida del campo,
+  así que lo esperable es que alguna supere: el mes queda Con diferencia y se resuelve con una
+  Revisión de diferencia. Descartado: una sola fila con la unidad de mayor importe, porque
+  esconde la otra, y prorratear, porque adivina.
+  > Desactualizado por la spec del 2026-10-17: la fila y el Umbral van por grupo de tareas y
+  > unidad, no por tarea (ver §3.4).
 - **Clave del Cruce: Cliente + mes + tarea**, agrupado por grupo de tareas. Lo facturado cuenta
   en el mes de su Período facturado. La finca no es parte de la clave (en la planilla casi
   nunca se carga).
+  > Desactualizado por la spec del 2026-10-17: la clave es Cliente + mes + grupo de tareas +
+  > unidad (ver §3.4).
 - **Se mira por mes completo** (2026-10-14; antes, rango libre que arrancaba en el mes). Una
   diferencia de una quincena puede compensarse en la siguiente; mirar por quincena generaría
   alarmas falsas. El Resumen junta varios meses, una fila por mes y Cliente.
+  > Desactualizado por la spec del 2026-10-17: se mira por día, con atajos de quincena y de
+  > mes; las filas siguen por mes y Cliente (ver "El período que se mira" en §3.4).
 - **La Diferencia en pesos** se valoriza con el precio unitario de lo facturado. No hay lista
   de precios pactados: la tabla de precios que tiene el informe es del proceso de liquidación
   anterior y no aplica.
@@ -147,15 +159,24 @@ facturado.
 
 ### 3.4 El Estado del mes y las Alertas
 
-Rediseñado el 2026-10-14. Cada mes y Cliente tiene un **Estado del mes**; tres de ellos son
-**Alertas de facturación**, que piden que alguien haga algo:
+Rediseñado el 2026-10-14; el criterio de Con diferencia, el período que se mira y la Revisión,
+el 2026-10-17. Cada mes y Cliente tiene un **Estado del mes**, calculado sobre el período que se
+mira recortado a ese mes; tres de ellos son **Alertas de facturación**, que piden que alguien
+haga algo:
 
 - **Pendiente de facturar** (Alerta): tuvo trabajo facturable y no tiene nada facturado. Es
   sólo un estado del mes; el Comprobante histórico sin número posterior al corte no cuenta como
   facturado, y no tiene término propio.
-- **Con diferencia** (Alerta): **por tarea, en cantidades**. Basta que una tarea facturable se
-  aparte más del Umbral de diferencia, para arriba o para abajo; una tarea trabajada y no
-  facturada también cuenta. Reemplaza el criterio por grupo de tareas del diseño anterior.
+- **Con diferencia** (Alerta): **por grupo de tareas y Unidad de facturación, en cantidades**
+  (2026-10-17). Basta que un grupo facturable, en una unidad, se aparte más del Umbral de
+  diferencia, para arriba o para abajo; un grupo trabajado y no facturado también cuenta, y uno
+  facturado sin Cantidad del campo también (su Dif. % es "—"). Un grupo con dos unidades se mide
+  dos veces. Las tareas no avisan. Porqué: las contadoras facturan por grupo, y comparar por
+  tarea daba Con diferencia en meses bien facturados. Reemplaza el criterio por tarea del
+  rediseño del 2026-10-14.
+- **Sin comparar en este período**: ningún grupo del mes se puede comparar, porque todos tienen
+  Líneas cuyo período no entra entero en el período mirado (ver "El período
+  que se mira"). Va en lugar de Pendiente de facturar y de Con diferencia, y no es una Alerta.
 - **Falta comprobante** (Alerta): algún Comprobante del mes sin Adjunto, salvo los históricos.
 - **Facturada**: ninguno de los anteriores.
 - **Mes en curso**: el mes no terminó. Sólo se controla Falta comprobante, porque es de la
@@ -169,17 +190,39 @@ Reglas:
   urgente: Pendiente de facturar, Con diferencia, Falta comprobante. Pendiente de facturar y
   Facturada van siempre solos. Los cuadros y el filtro de Estado cuentan cada Alerta por
   separado.
-- **Umbral de diferencia**: uno solo para todos los Clientes y tareas, arranca en 5 % y lo
-  cambia sólo el Admin. Uno por Cliente o por tarea se suma si hace falta.
+- **El período que se mira** (2026-10-17). El Resumen y el Detalle se filtran **por día**,
+  con Desde y Hasta y los atajos Quincena pasada, Esta quincena, Mes pasado, Este mes, Últimos
+  3 meses, Este año y Otro período; arranca en Mes pasado. Las filas siguen siendo por mes y
+  Cliente, el Estado se calcula sobre el filtro recortado a cada mes y el Detalle recibe el
+  mismo rango. El campo trae los partes cuya fecha cae en el filtro. Porqué: la mayoría de la
+  facturación es quincenal y sólo por meses no se podía controlar una quincena. Reemplaza al
+  "se mira por mes completo" del 2026-10-14.
+- **Una Línea cuenta sólo si su período entero cae adentro del filtro.** Si cae en parte, no
+  cuenta: su grupo muestra lo facturado "fuera del filtro", sin Diferencia, y no avisa, aunque
+  tenga otra Línea entera adentro (grupo mixto). La fila lleva un aviso con cada Comprobante
+  que tiene Líneas que no entran y un botón que cambia el filtro al período de esas Líneas.
+  Porqué: con los atajos casi no pasa, y repartir media Línea inventaba diferencias. Descartado: el reparto proporcional al campo o a los días.
+- **Cada Línea tiene su período**, mientras el Comprobante no tenga Período facturado:
+  una Línea con fecha del 1 al 15 cubre la primera quincena del mes, y una del 16 en adelante,
+  la segunda. El usuario confirmó que todo el histórico es así (fechas del 1 o del 16). Un Comprobante con Líneas en las dos quincenas se compara Línea por
+  Línea, cada una en su quincena (decisión del usuario, 2026-10-17). Una
+  factura del mes completo se reconoce recién con el Período facturado (E3b), y el mismo aviso
+  le sirve sin cambios.
+- **Umbral de diferencia**: uno solo para todos los Clientes y grupos de tareas, arranca en 5 %
+  y lo cambia sólo el Admin. Uno por Cliente o por tarea se suma si hace falta.
 - **Mes de corte**: arranca en octubre de 2026 y lo mueve sólo el Admin, por ejemplo cuando se
   terminó de revisar lo anterior. Reemplaza al corte fijo del diseño anterior.
 - **Revisión de diferencia** (antes, Alerta revisada): sobre un mes Con diferencia, con un
-  comentario obligatorio; guarda quién, cuándo y **las tareas que superaban** en ese momento.
-  Si siguen superando las mismas, el mes queda Facturada con la nota "Diferencia revisada"; si
-  supera una tarea que no estaba, vuelve a Con diferencia; si ya no supera ninguna, queda
-  Facturada y la Revisión, en el registro. Si una diferencia se compensa entre meses, salta igual
-  y se revisa: el sistema no adivina compensaciones. Sólo se revisa Con diferencia: un Pendiente
-  de facturar no se marca como revisado (decisión del usuario).
+  comentario obligatorio; guarda quién, cuándo, **los grupos de tareas, con su unidad, que
+  superaban** en ese momento y **su período** (2026-10-17): el desde y el hasta del filtro
+  recortados al mes de la fila; con Mes pasado, el mes entero. **Cubre sólo ese período
+  exacto**: la de la primera quincena no cubre el mes entero ni al revés. Si en ese período
+  siguen superando sólo grupos guardados, el mes queda Facturada con la nota "Diferencia
+  revisada"; si supera un grupo que no estaba, vuelve a Con diferencia; si ya no supera
+  ninguno, queda Facturada y la Revisión, en el registro. Se deja y se deshace desde el
+  Detalle. Si una diferencia se compensa entre meses, salta igual y se revisa: el sistema no
+  adivina compensaciones. Sólo se revisa Con diferencia: un Pendiente de facturar no se marca
+  como revisado (decisión del usuario).
 - **Nombres**: los de la pantalla en todos lados. Salen "sin facturar", "facturado con
   diferencia", "sin comprobante" y "Alerta revisada".
 
@@ -218,13 +261,20 @@ ellas. Reemplazan a las tres capacidades del diseño original (consultar, cargar
 | **Panel** | sí, desde Gerencial | — (sólo Ver) |
 
 - **Resumen reemplaza a Pendientes y Cruce** (2026-10-14): el Detalle es el Cruce de una fila
-  del Resumen, y separarlos permitiría ver los estados sin poder ver por qué. Cómo se pasan las
-  claves de pantalla ya declaradas (`pendientes` y `cruce`) lo decide el plan de la etapa 3:
-  nadie tiene todavía el rol del módulo.
+  del Resumen, y separarlos permitiría ver los estados sin poder ver por qué. Las claves de
+  pantalla ya declaradas (`pendientes` y `cruce`) se retiran como se retiró la de la pantalla
+  Unidad de medida por defecto: salen del módulo, sus permisos guardados se borran después del
+  deploy y no se reutilizan nunca, porque un rol con permisos viejos ganaría la pantalla nueva.
+  Tampoco se copian a Resumen, porque una pantalla nueva no entra en los roles que ya existen
+  (GUIA-MODULOS): el admin suma Resumen al rol de las contadoras cuando lo asigne.
 - **Importar orden va dentro de Comprobantes**, no como pantalla propia: importar es otra
   forma de crear Comprobantes, y separarlas permitiría importar sin poder cargar a mano.
 - **El Umbral y el Mes de corte los cambia sólo el Admin.** Quien deja Revisiones no los puede
-  tocar, para no hacer desaparecer las Alertas. Dónde los cambia lo decide la etapa 3.
+  tocar, para no hacer desaparecer las Alertas. Los cambia desde el pie del Resumen, donde ya se
+  muestran, con "Cambiar", que sólo ve el Admin; el backend vuelve a controlar que lo sea. Se
+  guardan en el módulo y, mientras nadie los cambie, valen los iniciales. Descartado: variables
+  de entorno (las cambia quien deploya, no el Admin), una pantalla propia y la Administración del
+  núcleo, que no conoce los módulos.
 - **El módulo no crea roles.** Al activarlo, el admin arma desde la Administración el rol de
   las contadoras y suma al de Gerente lo que corresponda. Las contadoras están en el padrón
   de empleados y se dan de alta como cualquier usuario.
@@ -246,7 +296,7 @@ Cada etapa es un par de PRs hermanos (backend y frontend). Deploy sólo con OK.
 |---|---|---|
 | **1** | El módulo registrado y activo, con sus pantallas. La **Unidad sugerida** y la marca **No facturable** de cada tarea, con su primera carga y la pantalla Unidad de medida por defecto. `PRODUCT.md` del front con las contadoras y el módulo. Esa pantalla, con su tabla y su primera carga, se retiró el 2026-10-12: la Unidad sugerida y No facturable se leen del sistema de campo. | Cada tarea tiene Unidad sugerida o es No facturable, y las que no tienen nada se ven primero. |
 | **2** | **Comprobantes** (Factura y Nota de crédito, cabecera y líneas), **Adjuntos** en la carpeta del VPS y la **migración del histórico**, re-ejecutable. | El histórico migrado suma lo mismo que la planilla, por Cliente y mes. |
-| **3** | **Resumen** y **Detalle** (el Cruce por mes, hasta los partes del campo), con el **Estado del mes**, las Alertas, la Revisión de diferencia, el Umbral y el Mes de corte (dónde los cambia el Admin, lo decide esta etapa). La **Precarga**, con el Período facturado, la Fecha de carga y el Precio sugerido. El aviso de tarea facturable sin Unidad sugerida, en el Resumen. Rediseñada el 2026-10-14; el plan puede partirla en dos. | El Cruce da los mismos números que el informe de Power BI para los meses ya cerrados, salvo las diferencias explicadas en la sección 4, y una factura del mes pasado se carga desde el Resumen con la Precarga. |
+| **3** | **Resumen** y **Detalle** (el Cruce por mes, hasta los partes del campo), con el **Estado del mes**, las Alertas, la Revisión de diferencia, el Umbral y el Mes de corte (los cambia el Admin desde el pie del Resumen). La **Precarga**, con el Período facturado, la Fecha de carga y el Precio sugerido. El aviso de tarea facturable sin Unidad sugerida, en el Resumen. Rediseñada el 2026-10-14 y partida en E3a (Resumen, Detalle, Revisión de diferencia, Umbral y Mes de corte) y E3b (Precarga, Período facturado y Fecha de carga). | El Cruce da los mismos números que el informe de Power BI para los meses ya cerrados, salvo las diferencias explicadas en la sección 4, y una factura del mes pasado se carga desde el Resumen con la Precarga. |
 | **4** | **Importador del primer cliente con portal** (formato nuevo), dentro de la Precarga, y **Equivalencias** por Cliente, con su primera carga. **Las contadoras dejan la planilla.** | Una orden real se importa completa, y cada renglón sin Equivalencia frena hasta definirla. |
 | **5** | **Importador del segundo cliente con portal** y **Panel** de lo facturado por mes, Cliente y grupo de tareas, en Gerencial. | Lo mismo que la etapa 4 para el segundo formato. |
 
@@ -265,10 +315,7 @@ Cada etapa es un par de PRs hermanos (backend y frontend). Deploy sólo con OK.
 
 - **Respaldo de la carpeta de adjuntos** en el VPS. Se suma al pendiente de confirmar el
   respaldo de la base (ADR-0019).
-- **Umbral de diferencia**: arranca en 5 %. Se ajusta con el uso. Dónde lo cambia el Admin lo
-  decide la etapa 3.
-- **El Período facturado de los Comprobantes históricos y de los ya cargados**: hoy cada Línea
-  tiene su fecha. Cómo se pasa al Período facturado lo decide el plan de la etapa 3.- **Pegar varias filas desde Excel** en la grilla de líneas: por ahora no. Se agrega si las
+- **Pegar varias filas desde Excel** en la grilla de líneas: por ahora no. Se agrega si las
   contadoras lo piden.
 
 ## 8. A futuro

@@ -7,7 +7,9 @@ faltantes del arranque cubra al módulo.
 
 La tabla de la E1 se borró con `facturacion/002`, porque la Unidad sugerida se
 lee del sistema de campo. Las de acá son de la E2 (`facturacion/003`): el
-Comprobante, sus Líneas y sus Adjuntos.
+Comprobante, sus Líneas y sus Adjuntos; y de la E3 (`facturacion/004`): la
+configuración del Resumen y la Revisión de diferencia, que la `facturacion/006`
+pasó a grupos de tareas con su período.
 """
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric,
@@ -17,7 +19,7 @@ from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 # Usuario vive en el núcleo. Se importa acá a propósito: `creado_por`,
-# `actualizado_por` y `subido_por` tienen ForeignKey("usuarios.id"), que
+# `actualizado_por`, `subido_por` y los de la Revisión tienen ForeignKey("usuarios.id"), que
 # SQLAlchemy resuelve por nombre, así que importar este módulo tiene que
 # registrar Usuario primero. No borrar.
 from app.core.models import Usuario, ahora_utc  # noqa: F401
@@ -149,4 +151,84 @@ class Adjunto(Base):
 
     __table_args__ = (
         UniqueConstraint("nombre_en_disco", name="uq_facturacion_adjunto_nombre_en_disco"),
+    )
+
+
+class Configuracion(Base):
+    """El Umbral y el Mes de corte del Resumen (004). Una sola fila, la de id 1.
+
+    Nace vacía: sin fila, el servicio usa los valores iniciales de `config.py`,
+    y el primer cambio del Admin la crea. Así los valores iniciales viven en un
+    solo lugar (plan de la E3, decisión 4).
+    """
+    __tablename__ = "facturacion_configuracion"
+
+    # Siempre 1: sin autoincremento a propósito.
+    id              = Column(Integer, primary_key=True, autoincrement=False)
+    # Porcentaje: 5.00 es 5 %.
+    umbral_pct      = Column(Numeric(5, 2), nullable=False)
+    # El día 1 del mes de corte.
+    mes_corte       = Column(Date, nullable=False)
+    actualizado_en  = Column(DateTime, nullable=False, default=ahora_utc)
+    actualizado_por = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+
+class RevisionDiferencia(Base):
+    """La Revisión de diferencia de un Cliente en un mes y un período (004 y 006).
+
+    Guarda el comentario, quién y cuándo, el período en que se dejó (`desde` y
+    `hasta`, dentro del mes) y en `grupos` las (grupo, unidad) que superaban el
+    Umbral cuando se dejó. No se borra al deshacerla: se sellan `deshecha_en` y
+    `deshecha_por`, y queda en el registro. La vigente es la más reciente del
+    (Cliente, mes, período exacto) que no fue deshecha.
+    """
+    __tablename__ = "facturacion_revision"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    # El id del maestro de clientes del sistema de campo.
+    cliente_id   = Column(Integer, nullable=False)
+    # El día 1 del mes.
+    mes          = Column(Date, nullable=False)
+    # El período revisado, los dos días incluidos y dentro del mes. Las
+    # Revisiones anteriores a la 006 quedaron con el mes entero.
+    desde        = Column(Date, nullable=False)
+    hasta        = Column(Date, nullable=False)
+    comentario   = Column(String(500), nullable=False)
+    creada_en    = Column(DateTime, nullable=False, default=ahora_utc)
+    creada_por   = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    # NULL = vigente, nadie la deshizo.
+    deshecha_en  = Column(DateTime, nullable=True)
+    deshecha_por = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+    grupos = relationship(
+        "RevisionGrupo", back_populates="revision",
+        cascade="all, delete-orphan", order_by="RevisionGrupo.id",
+    )
+
+    __table_args__ = (
+        # No único: se guardan todas, también las deshechas.
+        Index("ix_facturacion_revision_cliente_mes_periodo",
+              "cliente_id", "mes", "desde", "hasta"),
+    )
+
+
+class RevisionGrupo(Base):
+    """Una (grupo de tareas, unidad) que superaba cuando se dejó la Revisión (006)."""
+    __tablename__ = "facturacion_revision_grupo"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    # En la base, ON DELETE CASCADE: los grupos caen con su Revisión.
+    revision_id = Column(
+        Integer, ForeignKey("facturacion_revision.id", ondelete="CASCADE"), nullable=False,
+    )
+    # El grupo de tareas del maestro del campo, como se leyó. NULL = Sin grupo.
+    grupo       = Column(String(255), nullable=True)
+    # Una de las claves de unidades.py, como LineaComprobante.unidad. NULL = la
+    # línea no tenía unidad (tareas sin facturado y sin Unidad sugerida).
+    unidad      = Column(String(20), nullable=True)
+
+    revision = relationship("RevisionDiferencia", back_populates="grupos")
+
+    __table_args__ = (
+        Index("ix_facturacion_revision_grupo_revision", "revision_id"),
     )

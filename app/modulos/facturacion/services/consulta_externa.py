@@ -4,8 +4,9 @@ con SQL crudo y text().
 Del campo: el maestro de tareas, con el id que usan los partes (la Unidad
 sugerida y la marca No facturable se leen en vivo del tercer segmento de su
 descripción, y Facturación no guarda copia:
-docs/superpowers/plans/2026-10-12-unidad-desde-campo.md), y los clientes y
-las fincas, con id, para los Comprobantes. De sueldos: las Empresas emisoras.
+docs/superpowers/plans/2026-10-12-unidad-desde-campo.md), los clientes y
+las fincas, con id, para los Comprobantes, y los partes diarios para el Cruce
+(plan de la E3, decisión 6). De sueldos: las Empresas emisoras.
 
 Preliquidación lee los mismos maestros, pero un módulo no importa a otro
 (ADR-0013): el SQL se copia. La traducción de errores y los timeouts son del
@@ -13,11 +14,14 @@ núcleo (app/core/database.py): acá no se configuran.
 """
 
 import time
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import traducir_errores_externa
+from app.core.models import ahora_utc
 from app.modulos.facturacion.unidades import traducir_unidad
 
 # El maestro de tareas: la misma tabla, el mismo filtro de bajas y el mismo
@@ -91,6 +95,130 @@ QUERY_EMPRESAS = text(
 )
 
 
+# ─── Los partes del campo, para el Cruce ────────────────────────────────────
+# Una fila por (parte, tarea), copiada de las ramas de QUERY_PRINCIPAL de
+# Preliquidación (ADR-0013: se copia, no se importa). Las medidas siguen la
+# consulta de Power BI:
+#   PULVERIZADA  sólo el tractor 1 (trancadas1, hsjornal1, hsmaquina1), sumado
+#                por parte; la tarea es de la cabecera. Las unidades son 0,
+#                como en Power BI: no se lee la columna de la cabecera
+#   MAQUINARIA y TAREAS MANUALES  la tarea es de cada registro: se suma por
+#                cabecera y tarea
+# Sin la planilla de cosecha (no entra en el Cruce) ni el tractor 2.
+#
+# Las medidas son varchar y pueden traer texto: cada una pasa por el REGEXP de
+# Terceros antes de convertir, y lo que no es un número cuenta 0.
+#
+# El rango es semiabierto y sin DATE() en el filtro, para que pueda usar un
+# índice de la fecha: fecha >= :desde AND fecha < :hasta_exclusivo. Un parte
+# con hora (las 03:00) del último día queda adentro.
+#
+# El supervisor sale con el mismo join de cada rama de QUERY_PRINCIPAL, y
+# "dónde" es el nombre de la finca del parte.
+
+
+def _medida(campo: str) -> str:
+    """El cast de Terceros: el número del varchar, o 0 si no lo es."""
+    return (f"CASE WHEN TRIM({campo}) REGEXP '^[0-9]*[.]?[0-9]+$' "
+            f"THEN CAST(TRIM({campo}) AS DECIMAL(12,2)) ELSE 0 END")
+
+
+def _partes_del_campo(filtro_cliente: bool) -> str:
+    """La consulta base: una fila por (parte, tarea) con sus cuatro medidas.
+    Con filtro_cliente, cada rama filtra por :cliente_id."""
+    cliente = {
+        rama: f"AND {rama}.cliente = :cliente_id" if filtro_cliente else ""
+        for rama in ("pdpulve", "pdmaquinarias", "pdtareas")
+    }
+    return f"""
+  SELECT pdpulve.fecha AS fecha,
+         pdpulve.cliente AS cliente_id,
+         pdpulve.tarea AS tarea_id,
+         MAX(fincas.nombre) AS donde,
+         MAX(supervisor.name) AS supervisor,
+         SUM({_medida("pregistros.hsjornal1")}) AS horas_jornal,
+         SUM({_medida("pregistros.hsmaquina1")}) AS horas_maquina,
+         0 AS unidades,
+         SUM({_medida("pregistros.trancadas1")}) AS tancadas
+  FROM laa_pdpulverizadas pdpulve
+  INNER JOIN laa_pdpulverizadasregistros pregistros ON pregistros.parent_id = pdpulve.id AND pregistros.estado <> 9
+  LEFT JOIN laa_fincas fincas ON fincas.id = pdpulve.finca
+  LEFT JOIN ast_users supervisor ON supervisor.id = pdpulve.supervisor
+  WHERE pdpulve.estado <> 9
+    AND pdpulve.fecha >= :desde AND pdpulve.fecha < :hasta_exclusivo
+    {cliente["pdpulve"]}
+  GROUP BY pdpulve.id, pdpulve.fecha, pdpulve.cliente, pdpulve.tarea
+
+  UNION ALL
+
+  SELECT pdmaquinarias.fecha AS fecha,
+         pdmaquinarias.cliente AS cliente_id,
+         mregistros.tarea AS tarea_id,
+         MAX(fincas.nombre) AS donde,
+         MAX(usuario_supervisor.name) AS supervisor,
+         SUM({_medida("mregistros.hsjornal")}) AS horas_jornal,
+         SUM({_medida("mregistros.hsmaquina")}) AS horas_maquina,
+         SUM({_medida("mregistros.unidades")}) AS unidades,
+         0 AS tancadas
+  FROM laa_pdmaquinarias pdmaquinarias
+  INNER JOIN laa_pdmaquinariasregistros mregistros ON mregistros.parent_id = pdmaquinarias.id AND mregistros.estado <> 9
+  LEFT JOIN laa_fincas fincas ON pdmaquinarias.finca = fincas.id
+  LEFT JOIN laa_supervisores supervisores ON pdmaquinarias.supervisor = supervisores.idusuario
+  LEFT JOIN ast_users usuario_supervisor ON supervisores.idusuario = usuario_supervisor.id
+  WHERE pdmaquinarias.estado <> 9
+    AND pdmaquinarias.fecha >= :desde AND pdmaquinarias.fecha < :hasta_exclusivo
+    {cliente["pdmaquinarias"]}
+  GROUP BY pdmaquinarias.id, mregistros.tarea, pdmaquinarias.fecha, pdmaquinarias.cliente
+
+  UNION ALL
+
+  SELECT pdtareas.fecha AS fecha,
+         pdtareas.cliente AS cliente_id,
+         tregistros.tarea AS tarea_id,
+         MAX(fincas.nombre) AS donde,
+         MAX(usuario_supervisor.name) AS supervisor,
+         SUM({_medida("tregistros.hsjornal")}) AS horas_jornal,
+         0 AS horas_maquina,
+         SUM({_medida("tregistros.unidades")}) AS unidades,
+         0 AS tancadas
+  FROM laa_pdtareasmanuales pdtareas
+  INNER JOIN laa_pdtareasmanualesregistros tregistros ON tregistros.parent_id = pdtareas.id AND tregistros.estado <> 9
+  LEFT JOIN laa_fincas fincas ON fincas.id = pdtareas.finca
+  LEFT JOIN laa_supervisores supervisores ON supervisores.idusuario = pdtareas.supervisor
+  LEFT JOIN ast_users usuario_supervisor ON usuario_supervisor.id = supervisores.idusuario
+  WHERE pdtareas.estado <> 9
+    AND pdtareas.fecha >= :desde AND pdtareas.fecha < :hasta_exclusivo
+    {cliente["pdtareas"]}
+  GROUP BY pdtareas.id, tregistros.tarea, pdtareas.fecha, pdtareas.cliente
+"""
+
+
+# Lo trabajado del Resumen: por cliente, tarea y mes, con las sumas y la
+# cantidad de partes. Agrupa en la base: en 12 meses los partes son decenas de
+# miles de filas.
+QUERY_TRABAJADO_POR_MES = text(f"""
+SELECT p.cliente_id, p.tarea_id,
+       YEAR(p.fecha) AS anio, MONTH(p.fecha) AS mes,
+       SUM(p.horas_jornal) AS horas_jornal,
+       SUM(p.horas_maquina) AS horas_maquina,
+       SUM(p.unidades) AS unidades,
+       SUM(p.tancadas) AS tancadas,
+       COUNT(*) AS partes
+FROM ({_partes_del_campo(filtro_cliente=False)}) AS p
+GROUP BY p.cliente_id, p.tarea_id, YEAR(p.fecha), MONTH(p.fecha)
+ORDER BY anio, mes, p.cliente_id, p.tarea_id
+""")
+
+# Los partes de un cliente, uno por fila, para el Detalle y la Precarga: suman
+# en Python, así el panel de partes da igual que la columna.
+QUERY_PARTES_DE_CLIENTE = text(f"""
+SELECT p.fecha, p.tarea_id, p.donde, p.supervisor,
+       p.horas_jornal, p.horas_maquina, p.unidades, p.tancadas
+FROM ({_partes_del_campo(filtro_cliente=True)}) AS p
+ORDER BY p.fecha, p.tarea_id
+""")
+
+
 # Caché de proceso de clientes, fincas por cliente y empresas, como la de
 # empresas de Preliquidación: cambian casi nunca y la base de campo es lenta.
 # La clave distingue cada lectura (y el cliente, en las fincas). Un error no
@@ -104,8 +232,19 @@ def _reloj() -> float:
     return time.monotonic()
 
 
+# Las claves de la caché que son del Cruce (su primer elemento): las borra
+# invalidar_cache_cruce(), sin tocar clientes, fincas ni empresas.
+_CLAVES_CRUCE = ("trabajado", "partes", "tareas_cruce")
+
+
 def invalidar_cache():
     _CACHE.clear()
+
+
+def invalidar_cache_cruce():
+    """Borra de la caché sólo las lecturas del Cruce (el "Volver a leer")."""
+    for clave in [c for c in _CACHE if c[0] in _CLAVES_CRUCE]:
+        del _CACHE[clave]
 
 
 def _cacheado(clave, leer):
@@ -115,6 +254,22 @@ def _cacheado(clave, leer):
     datos = leer()
     _CACHE[clave] = (_reloj() + _CACHE_TTL, datos)
     return datos
+
+
+def _leida(filas: list) -> dict:
+    """Una lectura del Cruce con su hora (UTC), que se guarda con ella en la
+    caché: una llamada que sale de la caché devuelve la hora de la lectura."""
+    return {"leido_en": ahora_utc(), "filas": filas}
+
+
+def _numero(valor) -> Decimal:
+    """Una medida del campo como Decimal; un NULL es 0."""
+    return Decimal(0) if valor is None else Decimal(str(valor))
+
+
+def _dia(valor) -> date:
+    """La fecha de un parte, sin la hora con que la guarda el campo."""
+    return valor.date() if isinstance(valor, datetime) else valor
 
 
 def normalizar_nombre(nombre) -> str:
@@ -214,3 +369,58 @@ class ConsultaExternaService:
                 "no_facturable": no_facturable,
             })
         return tareas
+
+    # ─── El Cruce (plan de la E3, decisión 6) ──────────────────────────────
+    # Las tres lecturas devuelven {leido_en, filas} y van con caché de 10
+    # minutos; invalidar_cache_cruce() las borra.
+
+    def trabajado_por_mes(self, desde: date, hasta: date) -> dict:
+        """Lo trabajado por cliente, tarea y mes, entre desde y hasta (días,
+        los dos incluidos: el filtro del Resumen). Una sola consulta para todo
+        el rango, agrupada por mes en la base. Cada fila: {cliente_id,
+        tarea_id, mes (día 1), horas_jornal, horas_maquina, unidades,
+        tancadas, partes}."""
+        hasta_exclusivo = hasta + timedelta(days=1)
+
+        def leer():
+            filas = self._ejecutar(QUERY_TRABAJADO_POR_MES, {
+                "desde": desde, "hasta_exclusivo": hasta_exclusivo})
+            return _leida([
+                {"cliente_id": cliente_id, "tarea_id": tarea_id,
+                 "mes": date(anio, mes, 1),
+                 "horas_jornal": _numero(jornal), "horas_maquina": _numero(maquina),
+                 "unidades": _numero(unidades), "tancadas": _numero(tancadas),
+                 "partes": partes}
+                for (cliente_id, tarea_id, anio, mes, jornal, maquina, unidades,
+                     tancadas, partes) in filas
+            ])
+
+        return _cacheado(("trabajado", desde, hasta_exclusivo), leer)
+
+    def partes_de_cliente(self, cliente_id: int, desde: date, hasta: date) -> dict:
+        """Los partes de un cliente entre desde y hasta (días, los dos
+        incluidos), uno por (parte, tarea). Cada fila: {fecha, tarea_id,
+        donde, supervisor, horas_jornal, horas_maquina, unidades, tancadas}."""
+        hasta_exclusivo = hasta + timedelta(days=1)
+
+        def leer():
+            filas = self._ejecutar(QUERY_PARTES_DE_CLIENTE, {
+                "cliente_id": cliente_id, "desde": desde,
+                "hasta_exclusivo": hasta_exclusivo})
+            return _leida([
+                {"fecha": _dia(fecha), "tarea_id": tarea_id, "donde": donde,
+                 "supervisor": supervisor,
+                 "horas_jornal": _numero(jornal), "horas_maquina": _numero(maquina),
+                 "unidades": _numero(unidades), "tancadas": _numero(tancadas)}
+                for (fecha, tarea_id, donde, supervisor, jornal, maquina, unidades,
+                     tancadas) in filas
+            ])
+
+        return _cacheado(("partes", cliente_id, desde, hasta_exclusivo), leer)
+
+    def tareas_cruce(self) -> dict:
+        """El maestro de tareas con las bajas, para el Cruce, con caché.
+        obtener_tareas sigue sin caché: la validación del alta de la E2 no
+        cambia."""
+        return _cacheado(("tareas_cruce",),
+                         lambda: _leida(self.obtener_tareas(incluir_baja=True)))

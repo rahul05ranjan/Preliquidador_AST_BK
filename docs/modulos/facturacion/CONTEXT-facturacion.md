@@ -61,7 +61,8 @@ Comprobante que corrige una Factura hacia abajo. Apunta a la Factura que corrige
 Líneas restan en el Cruce.
 
 **Fecha de carga**:
-El día en que se registró el Comprobante en Facturación. La pone el sistema y no se cambia.
+El día en que se registró el Comprobante en Facturación. La pone el sistema y no se cambia. Un
+Comprobante histórico no la tiene: su fecha es la de la factura que anotó la planilla.
 _Avoid_: confundirla con el Período facturado, que es lo que decide en qué mes cuenta.
 
 **Período facturado**:
@@ -74,7 +75,9 @@ _Avoid_: un período que cruce de un mes a otro.
 **Línea de comprobante**:
 Un renglón del Comprobante traducido al lenguaje del campo: tarea del sistema de campo, Unidad
 de facturación, cantidad, precio unitario e importe neto (sin IVA). La finca es opcional. Cuenta
-en el Período facturado de su Comprobante.
+en el Período facturado de su Comprobante. En un Comprobante histórico, que no tiene Período
+facturado, cada Línea cubre la Quincena de su propia fecha a facturar, la que anotó la planilla:
+una fecha del 1 al 15 es la primera Quincena del mes, y una del 16 en adelante, la segunda.
 _Avoid_: el texto con que el cliente nombra la tarea; eso es lo que traduce la Equivalencia.
 
 **Adjunto**:
@@ -87,7 +90,10 @@ Un Comprobante que vino de la planilla anterior al módulo. Puede no tener Empre
 Adjunto, y no genera la Alerta "Falta comprobante". Puede no tener número, cuando la planilla no
 lo anotó: junta las filas de un Cliente con la misma fecha a facturar, y pasa al Comprobante
 con número cuando la planilla lo tenga. Uno sin número posterior al corte que fijó el usuario
-se toma como todavía no facturado: sus Líneas no cuentan como facturado en el Cruce.
+se toma como todavía no facturado: sus Líneas no cuentan como facturado en el Cruce. No tiene
+Período facturado: cada Línea cubre la Quincena de su fecha a facturar, y el período del
+Comprobante es el de sus Líneas; uno con Líneas en varios meses cuenta en cada uno. Tampoco
+tiene Fecha de carga: su fecha es la de la factura que anotó la planilla, si la anotó.
 
 ---
 
@@ -157,22 +163,34 @@ tancadas); sólo una cuenta para facturar.
 _Avoid_: "cantidad LA", "cantidad final" (los nombres del informe anterior).
 
 **Cruce**:
-La comparación, para un Cliente y un mes, entre la Cantidad del campo y lo facturado, tarea por
-tarea y agrupado por grupo de tareas. Cada tarea se abre en los partes del sistema de campo que
-la forman. Se mira por mes completo, porque una diferencia de una quincena puede compensarse en
-la siguiente.
-_Avoid_: mirarlo por quincena.
+La comparación, para un Cliente y un mes, entre la Cantidad del campo y lo facturado, por grupo
+de tareas y Unidad de facturación: un grupo con dos unidades se compara dos veces. Se
+mira en un período de días, que puede ser una Quincena, un mes o cualquier rango, recortado a
+cada mes. Cada grupo se abre en sus tareas, y cada tarea en los partes del sistema de campo que
+la forman. Una Línea cuenta sólo si su período entero cae adentro del período mirado; si cae en
+parte, no cuenta, y su grupo queda fuera del filtro: no se compara, aunque tenga otra Línea
+entera adentro. El período es de cada Línea, no del Comprobante entero.
+_Avoid_: comparar tarea por tarea (las contadoras facturan por grupo de tareas); repartir una
+Línea que cae en parte afuera.
 
 **Diferencia**:
-Lo facturado menos la Cantidad del campo, para una tarea en el mes del Cruce. Negativa es
-facturado de menos. En porcentaje, se mide sobre la Cantidad del campo. En plata se valoriza con
-el precio unitario de lo facturado.
+Lo facturado menos la Cantidad del campo, para un grupo de tareas en una Unidad de facturación,
+en el período del Cruce. Negativa es facturado de menos. En porcentaje, se mide sobre la
+Cantidad del campo: lo facturado sin Cantidad del campo no tiene porcentaje. En plata se
+valoriza con el precio unitario de lo facturado.
 
 **Estado del mes**:
-Cómo está un Cliente en un mes, según el Cruce y sus Comprobantes:
+Cómo está un Cliente en un mes, según el Cruce y sus Comprobantes, en el período que se mira
+recortado a ese mes:
 - **Pendiente de facturar**: tuvo trabajo facturable y no tiene nada facturado.
-- **Con diferencia**: en alguna tarea facturable, la Diferencia supera el Umbral de diferencia,
-  para arriba o para abajo. Una tarea trabajada y no facturada también cuenta.
+- **Con diferencia**: en algún grupo de tareas facturable, en alguna Unidad de facturación, la
+  Diferencia supera el Umbral de diferencia, para arriba o para abajo. Un grupo trabajado y no
+  facturado también cuenta, y uno facturado sin Cantidad del campo también. Las tareas no la
+  generan solas: cuenta el grupo.
+- **Sin comparar en este período**: todos los grupos de tareas del mes quedan fuera del filtro,
+  porque tienen Líneas cuyo período no entra entero en el período mirado. Va
+  en lugar de Pendiente de facturar y de Con diferencia; Falta comprobante sigue apareciendo al lado. No es una Alerta de facturación: se
+  resuelve mirando el período entero de esas Líneas.
 - **Falta comprobante**: alguno de sus Comprobantes no tiene ningún Adjunto (salvo los
   Comprobantes históricos).
 - **Facturada**: ninguno de los anteriores. Si tuvo una Revisión de diferencia, lleva la nota
@@ -192,17 +210,22 @@ _Avoid_: "verificación" (es el término de Terceros); "sin facturar", "facturad
 y "sin comprobante" (los nombres anteriores).
 
 **Revisión de diferencia**:
-Lo que deja una persona cuando mira un mes Con diferencia y lo explica (por ejemplo, "se
-compensó en el mes siguiente"). Guarda quién, cuándo, el comentario, que es obligatorio, y las
-tareas que superaban el Umbral de diferencia en ese momento. Mientras superen esas mismas
-tareas, el mes queda Facturada con la nota "Diferencia revisada"; si después supera otra,
-vuelve a Con diferencia; si ya no supera ninguna, la Revisión queda en el registro.
-_Avoid_: "Alerta revisada" (el nombre anterior).
+Lo que deja una persona cuando mira un mes Con diferencia en un período y lo explica (por
+ejemplo, "se compensó en el mes siguiente"). Guarda quién, cuándo, el comentario, que es
+obligatorio, su período (el desde y el hasta que se miraban, recortados al mes) y los grupos de
+tareas, cada uno con su Unidad de facturación, que superaban el Umbral de diferencia en ese
+momento. Cubre sólo ese período exacto: la de una Quincena no cubre el mes entero, ni la del mes
+entero una Quincena. Mientras en ese período superen sólo grupos guardados, el mes queda
+Facturada con la nota "Diferencia revisada"; si después supera otro, vuelve a Con diferencia; si
+ya no supera ninguno, la Revisión queda en el registro. Deshacerla tampoco la borra: queda en el
+registro con quién la deshizo, y en un período vale la más reciente sin deshacer.
+_Avoid_: "Alerta revisada" (el nombre anterior); revisar por tarea.
 
 **Umbral de diferencia**:
-El porcentaje de Diferencia a partir del cual una tarea deja el mes Con diferencia. Es uno solo
-para todos los Clientes y tareas, y lo cambia sólo el Admin.
+El porcentaje de Diferencia a partir del cual un grupo de tareas, en una Unidad de facturación,
+deja el mes Con diferencia. Es uno solo para todos los Clientes y grupos, y lo cambia sólo el
+Admin, desde el pie del Resumen.
 
 **Mes de corte**:
 El primer mes que se controla. Los anteriores se ven en el Resumen y en el Cruce como Antes del
-corte y no generan Alertas de facturación. Lo mueve sólo el Admin.
+corte y no generan Alertas de facturación. Lo mueve sólo el Admin, desde el pie del Resumen.
