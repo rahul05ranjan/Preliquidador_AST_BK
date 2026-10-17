@@ -57,7 +57,9 @@ modales.
    cantidad y total); se cierra con Cerrar, Escape o un click afuera, y el foco vuelve a la tarea. El
    panel lateral de 360 px se va.
 4. **El TOTAL del Detalle sigue en pesos**, y suma sólo los comprobantes que cuentan en el filtro,
-   y dentro de ellos sólo las Líneas que cuentan.
+   y dentro de ellos sólo las Líneas que cuentan. Los grupos que no se comparan (fuera del filtro,
+   los mixtos incluidos) quedan afuera del TOTAL por los dos lados, lo trabajado y lo facturado
+   (decidido con el usuario en la revisión, 2026-10-17, Paso R1).
 5. **La Revisión guarda los (grupo, unidad) que superaban y su período** (Desde y Hasta: el filtro
    recortado al mes de la fila; con Mes pasado, el mes entero). Cubre sólo ese período exacto: la de la
    1.ª quincena no cubre el mes entero ni al revés. Si después supera otro grupo en ese período, vuelve
@@ -296,3 +298,28 @@ Criterios de aceptación:
 - [ ] El glosario ya no dice "se mira por mes completo" y suma "Sin comparar en este período".
 - [ ] El plan de la E3b dice 007 y el paso de deploy dice 004 y 006 antes del reinicio, 005 después.
 PR: el del backend de la E3a
+
+## Pasos de la revisión de código
+
+### Paso R1 — El TOTAL del Detalle deja afuera los grupos que no se comparan
+Hallazgo (urgent, revisión del 2026-10-17): `_total` en `app/modulos/facturacion/services/resumen_service.py`
+suma lo trabajado de todas las filas y lo facturado de todas las Líneas que cuentan, aunque el grupo esté
+fuera del filtro. El grupo dice "fuera del filtro", sin diferencia, pero el TOTAL sí la muestra, inventada.
+Escenarios de falla:
+- Filtro del 1 al 10, una Factura de Poda del 1 al 15 y Precio sugerido para Poda: el grupo dice fuera del
+  filtro, pero el TOTAL valoriza los partes de Poda contra $0 facturado.
+- Grupo mixto, filtro del 1 al 20: una Línea de Poda del 1 al 15 (cuenta) y otra del 16 al 31 (no cuenta).
+  El TOTAL compara lo trabajado del 1 al 20 contra lo facturado del 1 al 15.
+Decisión del usuario: opción "los dos lados" (decisión 4, ampliada). Los (tarea, unidad) de todo grupo con
+`fuera_del_filtro` quedan afuera de `campo_pesos`, de `facturado_pesos` y de `tareas_sin_precio`; el
+resto del TOTAL no cambia. Descartado: sacar sólo lo trabajado, porque deja una diferencia falsa al revés.
+Arreglo mínimo: en `_total`, juntar las claves (tarea_id, unidad) de las tareas de los grupos con
+`fuera_del_filtro` y excluirlas de los tres cálculos (para lo facturado, sumar las `cruce.lineas` con
+`signo * importe` cuyas claves no estén ahí, en vez de `cruce.facturado_neto`).
+Toca: `resumen_service.py` y `tests/facturacion/test_detalle.py`.
+Criterios de aceptación:
+- [ ] Un test rojo y después verde con el grupo fuera del filtro y Precio sugerido: `campo_pesos` 0 y
+      `tareas_sin_precio` sin esa tarea.
+- [ ] Un test rojo y después verde con el grupo mixto: ni lo trabajado ni la Línea que cuenta suman en el
+      TOTAL; un grupo comparable al lado sí suma por los dos lados.
+- [ ] Los tests de facturación pasan.

@@ -709,12 +709,20 @@ def _total(cruce: CruceMes, precios: dict) -> dict:
     """El TOTAL del Detalle: el campo valorizado con el precio de cada fila,
     lo facturado neto real (las Notas de crédito restan), la diferencia y su
     % ("—", None, si el campo valorizado es 0), y cuántas tareas tienen alguna
-    fila sin precio (una tarea en dos unidades cuenta una vez)."""
+    fila sin precio (una tarea en dos unidades cuenta una vez).
+
+    Los (tarea, unidad) de los grupos fuera del filtro, los mixtos incluidos,
+    no se comparan y quedan afuera de las tres cuentas, por los dos lados
+    (decisión 4 de la spec, Paso R1)."""
+    afuera = {(f.tarea_id, f.unidad)
+              for g in cruce.grupos if g.fuera_del_filtro for f in g.tareas}
+    filas = [f for f in cruce.filas if (f.tarea_id, f.unidad) not in afuera]
     campo = sum((f.campo * precios[(f.tarea_id, f.unidad)]
-                 for f in cruce.filas
+                 for f in filas
                  if (f.tarea_id, f.unidad) in precios and f.campo is not None),
                 CERO).quantize(_CENTESIMOS, rounding=ROUND_HALF_UP)
-    facturado = cruce.facturado_neto
+    facturado = sum((l.signo * l.importe for l in cruce.lineas
+                     if (l.tarea_id, l.unidad) not in afuera), CERO)
     diferencia = facturado - campo
     return {
         "campo_pesos": campo,
@@ -723,7 +731,7 @@ def _total(cruce: CruceMes, precios: dict) -> dict:
         "diferencia_pct": (None if not campo else
                            (diferencia * 100 / campo).quantize(
                                _CENTESIMOS, rounding=ROUND_HALF_UP)),
-        "tareas_sin_precio": len({f.tarea_id for f in cruce.filas
+        "tareas_sin_precio": len({f.tarea_id for f in filas
                                   if (f.tarea_id, f.unidad) not in precios}),
     }
 

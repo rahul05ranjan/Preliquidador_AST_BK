@@ -663,6 +663,60 @@ def test_con_desde_y_hasta_el_detalle_se_recorta_a_ese_periodo(db, servicio, con
     assert detalle["total"]["facturado_pesos"] == D("0")
 
 
+def test_un_grupo_fuera_del_filtro_queda_afuera_del_total(db, servicio, consulta):
+    # Paso R1 (decisión 4): un grupo que no se compara no suma en el TOTAL,
+    # aunque su tarea tenga precio.
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="8")
+    consulta.parte(UNO, ATADO, date(2026, 10, 4), jornal="2")
+    # Una Factura anterior y entera: PODA tiene Precio sugerido.
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 9, 1), "10", "1000", "100")],
+                adjuntos=1)
+    # La Factura de octubre cubre del 1 al 15: cae en parte afuera. ATADO va
+    # a precio 0, así que no tiene precio y contaría como sin precio.
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "8", "800", "100"),
+                          (ATADO, "horas_peon", date(2026, 10, 1), "2", "0", "0")],
+                adjuntos=1)
+    assert precios_sugeridos(db, UNO)[(PODA, "horas_peon")]["precio_unitario"] == D("100")
+
+    detalle = servicio.detalle(UNO, "2026-10", desde="2026-10-01", hasta="2026-10-10")
+
+    assert linea(detalle, "MANUALES", "horas_peon")["fuera_del_filtro"] is True
+    assert fila(detalle, PODA)["precio"] == D("100")
+    assert detalle["total"]["campo_pesos"] == D("0")
+    assert detalle["total"]["tareas_sin_precio"] == 0
+
+
+def test_un_grupo_mixto_queda_afuera_del_total_y_uno_comparable_suma(db, servicio,
+                                                                      consulta):
+    # Paso R1 (decisión 4): el grupo mixto no suma ni lo trabajado ni la Línea
+    # que cuenta; el grupo comparable de al lado suma por los dos lados.
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="10")
+    consulta.parte(UNO, RASTREADO, date(2026, 10, 5), maquina="5")
+    # PODA: la Línea del 1 (del 1 al 15) cuenta y la del 16 (del 16 al 31)
+    # cae en parte afuera del filtro.
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "10", "1000", "100")],
+                adjuntos=1)
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 16), "10", "1200", "120")],
+                adjuntos=1)
+    # RASTREADO: una Línea entera adentro, a 500 la hora.
+    comprobante(db, UNO, [(RASTREADO, "horas_tractor", date(2026, 10, 1), "4", "2000",
+                           "500")], adjuntos=1)
+
+    detalle = servicio.detalle(UNO, "2026-10", desde="2026-10-01", hasta="2026-10-20")
+
+    assert linea(detalle, "MANUALES", "horas_peon")["fuera_del_filtro"] is True
+    assert linea(detalle, "MAQUINARIA", "horas_tractor")["fuera_del_filtro"] is False
+    assert fila(detalle, PODA)["precio"] == D("100")
+    # Sólo RASTREADO: 5 × 500 = 2500 contra 2000 facturado.
+    assert detalle["total"] == {
+        "campo_pesos": D("2500"),
+        "facturado_pesos": D("2000"),
+        "diferencia_pesos": D("-500"),
+        "diferencia_pct": D("-20.00"),
+        "tareas_sin_precio": 0,
+    }
+
+
 def test_con_todo_afuera_el_detalle_es_sin_comparar_y_no_se_revisa(db, servicio, consulta):
     consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="8")
     comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "20", "2000")],
