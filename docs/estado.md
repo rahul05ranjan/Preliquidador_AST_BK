@@ -25,13 +25,18 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   contra `testing` (julio y septiembre) y Este año tarda unos 2 s, con una sola lectura del campo.
   Quedan para el smoke los 1366 px con la fila del aviso, el botón del aviso, el teclado en los
   selectores de fecha y Revisar y Deshacer de un período parcial. Rompe `scripts/cruce_facturacion.py`
-  (lee meses y pasa el último mes como día 1), que arregla el Ticket 5a. La spec se corrigió con el usuario: se guardan todas las Revisiones por
+  (lee meses y pasa el último mes como día 1), que arregla el Ticket 5a. El Ticket 5a (el script del
+  cruce por grupo y unidad) está commiteado en el backend (unos 15 minutos, 158k tokens): usa el mismo
+  cálculo que el Resumen y saca, al lado, un CSV por tarea con la medida "como Power BI"; contra
+  `testing`, de julio a septiembre, sus 180 líneas dan igual que el Resumen. Con eso están los cinco
+  tickets. La spec se corrigió con el usuario: se guardan todas las Revisiones por
   período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
   base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
 
 ## Próximo paso
 
-Seguir con el Ticket 5a (el script del cruce por grupo y por día). Después, revisión de código, la F5 del usuario contra
+Revisión de código de la E3a por grupo en los dos repos y el smoke en el navegador de los Tickets 2
+a 4. Después, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
