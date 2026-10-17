@@ -61,7 +61,7 @@ LINEA_FUERA = {
 }
 FILA = {
     "cliente_id": 12, "cliente_nombre": "CLIENTE UNO", "mes": date(2026, 10, 1),
-    "desde": date(2026, 10, 1), "hasta": date(2026, 10, 10),
+    "desde": date(2026, 10, 1), "hasta": date(2026, 10, 10), "en_curso": False,
     "grupos": [LINEA, LINEA_SIN_CAMPO, LINEA_FUERA], "lineas_superan": 2,
     "estados": ["con_diferencia", "falta_comprobante"],
     "diferencia_revisada": False,
@@ -106,7 +106,7 @@ SIN_UNIDAD_DETALLE = {
 }
 DETALLE = {
     "cliente_id": 12, "cliente_nombre": "CLIENTE UNO", "mes": date(2026, 10, 1),
-    "desde": date(2026, 10, 1), "hasta": date(2026, 10, 15),
+    "desde": date(2026, 10, 1), "hasta": date(2026, 10, 15), "en_curso": False,
     "umbral_pct": D("5.00"), "mes_corte": date(2026, 10, 1),
     "leido_en": datetime(2026, 11, 10, 13, 30),
     "estados": ["facturada"], "diferencia_revisada": True, "se_puede_revisar": False,
@@ -132,13 +132,13 @@ CONFIGURACION = {
 # Las claves de cada respuesta, copiadas de la sección 3.2 del plan.
 CLAVES_RESUMEN = {"umbral_pct", "mes_corte", "mes_en_curso", "leido_en", "filas",
                   "tareas_sin_unidad", "actualizado_en", "actualizado_por_nombre"}
-CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "desde", "hasta", "grupos",
+CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "desde", "hasta", "en_curso", "grupos",
                "lineas_superan", "estados", "diferencia_revisada",
                "comprobantes_sin_adjunto", "comprobantes_fuera"}
 CLAVES_LINEA = {"grupo", "unidad", "campo", "facturado", "diferencia", "diferencia_pct",
                 "supera", "fuera_del_filtro"}
 CLAVES_COMPROBANTE_FUERA = {"id", "tipo", "numero", "desde", "hasta"}
-CLAVES_DETALLE = {"cliente_id", "cliente_nombre", "mes", "desde", "hasta",
+CLAVES_DETALLE = {"cliente_id", "cliente_nombre", "mes", "desde", "hasta", "en_curso",
                   "umbral_pct", "mes_corte",
                   "leido_en", "estados", "diferencia_revisada", "se_puede_revisar",
                   "comprobantes", "grupos", "total", "revision"}
@@ -270,6 +270,7 @@ def test_el_resumen_sale_con_la_forma_del_contrato():
     assert fila["mes"] == "2026-10"
     # El período de la fila, en días: el filtro recortado al mes.
     assert (fila["desde"], fila["hasta"]) == ("2026-10-01", "2026-10-10")
+    assert fila["en_curso"] is False
     # Las líneas (grupo, unidad), con los decimales como texto y sin pesos.
     assert fila["lineas_superan"] == 2
     assert [set(l) for l in fila["grupos"]] == [CLAVES_LINEA] * 3
@@ -307,6 +308,7 @@ def test_el_detalle_sale_con_la_forma_del_contrato():
     assert set(cuerpo) == CLAVES_DETALLE
     assert cuerpo["mes"] == "2026-10"
     assert (cuerpo["desde"], cuerpo["hasta"]) == ("2026-10-01", "2026-10-15")
+    assert cuerpo["en_curso"] is False
     assert cuerpo["mes_corte"] == "2026-10"
     assert cuerpo["umbral_pct"] == "5.00"
     assert cuerpo["comprobantes"] == [{"id": 5, "tipo": "factura", "numero": "A 0001",
@@ -708,6 +710,29 @@ def test_del_1_al_10_la_fila_avisa_y_la_quincena_se_revisa_aparte(real):
     r = c.delete(f"{ruta}/revision?{quincena}")
     assert r.status_code == 200, r.text
     assert r.json()["revision"] is None
+
+
+def test_la_fila_y_el_detalle_traen_si_el_periodo_esta_en_curso(real):
+    """Hoy es el 10 de noviembre: la 1.ª quincena de noviembre todavía no
+    terminó y se controla igual (Pendiente de facturar), con `en_curso`;
+    octubre ya terminó (plan del 2026-10-17)."""
+    _con_diferencia(real)
+    real.consulta.parte(detalle_a8.UNO, detalle_a8.PODA, date(2026, 11, 3), jornal="8")
+    c = real.c
+
+    r = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-11-15")
+    assert r.status_code == 200, r.text
+    por_mes = {f["mes"]: (f["estados"], f["en_curso"]) for f in r.json()["filas"]}
+    assert por_mes == {"2026-11": (["pendiente_de_facturar"], True),
+                       "2026-10": (["con_diferencia"], False)}
+
+    ruta = f"{F}/resumen/{detalle_a8.UNO}"
+    r = c.get(f"{ruta}/2026-11?desde=2026-11-01&hasta=2026-11-15")
+    assert r.status_code == 200, r.text
+    assert (r.json()["estados"], r.json()["en_curso"]) == (["pendiente_de_facturar"], True)
+    r = c.get(f"{ruta}/2026-10")
+    assert r.status_code == 200, r.text
+    assert r.json()["en_curso"] is False
 
 
 def test_una_configuracion_invalida_es_422_con_el_campo(real):

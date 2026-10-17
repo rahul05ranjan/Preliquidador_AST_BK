@@ -36,9 +36,11 @@ mismos números que el informe de Power BI que hoy hace ese control.
 - **Resumen** (la que abre el módulo):
   - Arriba, tres cuadros con las Alertas de facturación (Pendiente de facturar, Con diferencia
     y Falta comprobante), cada uno con su cantidad. Tocar uno filtra la tabla por esa Alerta.
-  - Barra de filtros: período por día, con Desde y Hasta y los atajos Quincena pasada, Esta
-    quincena, Mes pasado, Este mes, Últimos 3 meses, Este año y Otro período, y seleccionables
-    de Mes, Cliente y Estado. Arranca en Mes pasado. Las filas siguen siendo por mes y Cliente:
+  - Barra de filtros: período por día, elegido en un calendario de rango (el primer clic marca
+    Desde, el segundo Hasta y aplica), con los atajos al costado (Quincena pasada, Esta
+    quincena, Mes pasado, Este mes, Últimos 3 meses y Este año): un clic en un atajo aplica su
+    rango y cierra el panel, y para corregirlo se vuelve a abrir; y seleccionables de Mes, Cliente y Estado. Arranca en Mes pasado.
+    No se eligen días posteriores al fin del mes en curso. Las filas siguen siendo por mes y Cliente:
     cada mes se mira con el período recortado a ese mes, y el Detalle recibe el mismo período.
   - Arriba a la derecha, "Datos del campo de las HH:MM · Volver a leer": la hora de la lectura
     más vieja del sistema de campo que usa la pantalla, y un link que la vuelve a leer.
@@ -69,9 +71,10 @@ mismos números que el informe de Power BI que hoy hace ese control.
   - El botón del encabezado lleva a la Alerta más urgente, en este orden: Pendiente de facturar
     (Cargar factura, abre la Precarga), Con diferencia (Ver diferencia), Falta comprobante
     (Adjuntar PDF). Sin Alertas, Ver detalle.
-  - Un bloque Facturada con Revisión de diferencia lleva la nota "Diferencia revisada". El mes
-    en curso y los meses Antes del corte van en gris: sus líneas se ven en gris, con Dif., sin
-    aviso.
+  - Un bloque Facturada con Revisión de diferencia lleva la nota "Diferencia revisada". Los
+    meses Antes del corte van en gris: sus líneas se ven en gris, con Dif., sin aviso. Un bloque
+    cuyo período todavía no terminó (Período en curso) se controla igual y lleva, al lado del
+    Estado, la etiqueta tenue "En curso".
   - Un pie dice desde qué mes se controla, el Umbral de diferencia y que la cosecha no entra.
     Sólo el Admin ve "Cambiar", que abre en el mismo pie un formulario chico para el Umbral de
     diferencia y el Mes de corte.
@@ -98,8 +101,8 @@ mismos números que el informe de Power BI que hoy hace ese control.
   - Datos de la factura: Tipo, Cliente, Empresa emisora (la de la última Factura al Cliente),
     Número (punto de venta y número), la Fecha de carga (hoy, sin editar) y el Período
     facturado.
-  - El Período facturado tiene atajos (Mes pasado, Quincena pasada, Este mes, Otro período),
-    Desde y Hasta, y dice en qué mes cuenta la factura. Si cruza de un mes a otro, queda en rojo
+  - El Período facturado se elige en el mismo calendario de rango del Resumen, con sus atajos
+    al costado, y dice en qué mes cuenta la factura. Si cruza de un mes a otro, queda en rojo
     y no se puede guardar. Si cambia, un aviso ofrece "Recalcular líneas" o "Dejar como
     están", y hasta elegir no se puede guardar.
   - Líneas: una por tarea trabajada en el período, con #, Tarea, Unidad (la Unidad sugerida),
@@ -139,11 +142,13 @@ mismos números que el informe de Power BI que hoy hace ese control.
 - Resumen sin filas con los filtros: "Nada con estos filtros".
 - Un Cliente sin trabajo y sin Comprobantes en el mes no aparece.
 - Con los atajos, el aviso de facturas que no entran casi no aparece: cada factura cubre una
-  quincena entera. Sale con un Otro período que corta una quincena y, con el Período facturado,
+  quincena entera. Sale con un período elegido a mano que corta una quincena y, con el Período facturado,
   con una factura del mes completo mirada por quincena ("1 factura del mes completo no entra en
   esta quincena", con "Ver julio entero").
-- Desde el día 16, Quincena pasada cae en el Mes en curso, que sólo controla Falta comprobante;
-  Esta quincena y Este mes caen siempre ahí.
+- Quincena pasada, Esta quincena y Este mes se controlan como cualquier período, aunque caigan
+  en el mes en curso: Pendiente de facturar y "Cargar factura" aparecen sin esperar al mes
+  siguiente. Esta quincena y Este mes son siempre un Período en curso y llevan "En curso"; en el
+  Detalle, una línea avisa que el campo todavía puede sumar partes hasta el Hasta del período.
 - Comprobante histórico: sin Empresa emisora ni Adjunto, con una marca y sin Falta
   comprobante.
 - Tarea facturable sin Unidad sugerida: un solo aviso sobre la tabla del Resumen, no uno por
