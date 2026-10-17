@@ -15,13 +15,16 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   se revisó sola (0 urgent y 0 high; los minors van al cuerpo del PR y el deploy la aplica con el
   backend parado) y se aplicó en `testing` con respaldo y OK, dos veces: el modelo de la rama coincide
   con la base. Las 7 filas de la Revisión por tarea de `testing` se perdieron con la tabla, como
-  dice la migración. Hasta el Ticket 2, el Detalle del front de la rama queda roto a propósito. La spec se corrigió con el usuario: se guardan todas las Revisiones por
+  dice la migración. El Ticket 2 (Detalle por grupo, con el modal de partes) está commiteado en
+  `feature/facturacion-e3` en los dos repos (unos 25 minutos, 153k tokens); queda para el smoke que a
+  1366 px no haya scroll horizontal y el teclado en las filas y el modal. La spec se corrigió con el usuario: se guardan todas las Revisiones por
   período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
   base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
 
 ## Próximo paso
 
-Seguir con los Tickets 2, 3, 4 y 5a en serie. Después, revisión de código, la F5 del usuario contra
+Seguir con los Tickets 3, 4 y 5a en serie. El 3 lleva el boceto del modal de Revisión aprobado por el
+usuario antes de construirlo. Después, revisión de código, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
