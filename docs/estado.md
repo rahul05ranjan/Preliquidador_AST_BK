@@ -19,15 +19,19 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   `feature/facturacion-e3` en los dos repos (unos 25 minutos, 153k tokens); queda para el smoke que a
   1366 px no haya scroll horizontal y el teclado en las filas y el modal. El Ticket 3 (la Revisión por
   grupo en un modal, con el boceto aprobado el 2026-10-17) también está commiteado en los dos repos
-  (unos 22 minutos, 102k tokens); quedan para el smoke el foco y el teclado del modal, y para el
-  usuario confirmar el texto del 409 ("En el período del 1 al 31 de octubre ya no hay grupos que
-  superen el Umbral") y si el aviso, que es siempre el mismo para todo 409, alcanza. La spec se corrigió con el usuario: se guardan todas las Revisiones por
+  (unos 22 minutos, 102k tokens); queda para el smoke el foco y el teclado del modal (el texto del 409
+  lo confirmó el usuario). El Ticket 4 (filtro por día y aviso de lo que no entra) está commiteado en
+  los dos repos (unos 52 minutos, 94k tokens): sin migración; Mes pasado da igual que el Ticket 3
+  contra `testing` (julio y septiembre) y Este año tarda unos 2 s, con una sola lectura del campo.
+  Quedan para el smoke los 1366 px con la fila del aviso, el botón del aviso, el teclado en los
+  selectores de fecha y Revisar y Deshacer de un período parcial. Rompe `scripts/cruce_facturacion.py`
+  (lee meses y pasa el último mes como día 1), que arregla el Ticket 5a. La spec se corrigió con el usuario: se guardan todas las Revisiones por
   período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
   base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
 
 ## Próximo paso
 
-Seguir con los Tickets 4 y 5a en serie. Después, revisión de código, la F5 del usuario contra
+Seguir con el Ticket 5a (el script del cruce por grupo y por día). Después, revisión de código, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
