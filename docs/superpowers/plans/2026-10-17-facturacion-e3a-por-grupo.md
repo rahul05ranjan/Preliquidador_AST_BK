@@ -323,3 +323,49 @@ Criterios de aceptación:
 - [ ] Un test rojo y después verde con el grupo mixto: ni lo trabajado ni la Línea que cuenta suman en el
       TOTAL; un grupo comparable al lado sí suma por los dos lados.
 - [ ] Los tests de facturación pasan.
+
+## Pasos del smoke
+
+### Paso R2 — La tabla del Resumen no entra a 1366 px
+Hallazgo (smoke del 2026-10-17, contra `testing`): a 1366 × 768 la tabla del Resumen mide unos 1135 px
+contra 1074 del contenedor y aparece el scroll horizontal; "Cargar factura" queda cortado al borde y el badge
+"Pendiente de facturar" se parte en tres líneas. Causa: el Grupo de tareas hereda `white-space: nowrap` de
+las celdas y es la columna más ancha (unos 257 px).
+Decisión del usuario: se arregla antes de los PRs. Desde y Hasta apilados en el selector quedan como minor.
+Arreglo mínimo: en `src/modulos/facturacion/pages/Resumen.module.css`, que el Grupo de tareas se pueda partir
+(con un ancho mínimo, como el Cliente) y que el Estado y la Acción no se partan. Con eso no alcanzó (1099 px
+contra 1074): la Unidad también se parte ("Horas de tractor"), y el badge del Estado tiene un ancho máximo
+(el de "Pendiente de facturar") sólo por debajo de 1500 px, para que a 1920 vaya en una línea. Paso visual con `impeccable`
+(`impeccable context` y `reference/craft-floor.md`), sin test, verificado en el navegador.
+Toca: `Resumen.module.css` (y `Resumen.jsx` sólo si hace falta una clase).
+Criterios de aceptación:
+- [x] A 1366 × 768, en el Resumen, el `scrollWidth` de la tabla no supera su `clientWidth`, también con la
+      fila del aviso de lo que no entra.
+- [x] "Cargar factura" se ve entero y el badge del Estado no se parte en tres líneas.
+- [x] A 1920 px la tabla se ve igual que antes.
+Verificado (Mes pasado, Este año y del 1 al 10 de julio con el aviso, con el menú lateral expandido):
+1074 = 1074 a 1366 px, el badge en dos líneas como mucho; a 1920, en una.
+
+### Paso R3 — El foco cae en el BODY
+Hallazgo (smoke del 2026-10-17): dos casos dejan el foco en el BODY, y el próximo Tab arranca desde el
+principio de la página.
+- En el Resumen, el botón del aviso de lo que no entra cambia el período: la tabla se desmonta mientras carga,
+  y el botón con el foco desaparece con ella.
+- Un click en el fondo de un modal lo cierra; el cleanup de `Modal.jsx` devuelve el foco al botón que lo abrió,
+  pero después la acción por defecto del mousedown lo manda al BODY.
+Decisión del usuario: se arregla antes de los PRs. El texto "que cubría ." con una Revisión vieja sin grupos
+(sólo pasa en `testing`) queda como minor.
+Arreglo mínimo:
+- En `Resumen.jsx`, el h1 con `tabIndex={-1}` y un ref, como en el Detalle (`tituloRef`); `verPeriodo` le
+  pasa el foco después de cambiar el período.
+- En `Modal.jsx`, el `onMouseDown` del overlay llama a `e.preventDefault()` antes de `onCerrar()`, para que el
+  foco que devuelve el cleanup no se pierda.
+Los tests del front no tienen DOM: paso sin test, verificado en el navegador.
+Toca: `src/modulos/facturacion/pages/Resumen.jsx` y `src/modulos/facturacion/components/Modal.jsx`.
+Criterios de aceptación:
+- [x] Después de "Ver ese período" en el aviso, `document.activeElement` es el h1 del Resumen y el Tab
+      siguiente sigue el orden de la página (primero "Volver a leer" y las Alertas, como al cargarla).
+- [x] Después de un click en el fondo del modal de Revisión, el modal se cierra y el foco queda en el botón
+      que lo abrió; lo mismo con el modal de partes.
+- [x] El click dentro del modal, en una zona sin controles, no lo cierra.
+- [x] `npm test` y el build pasan.
