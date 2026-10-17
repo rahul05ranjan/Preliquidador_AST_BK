@@ -36,7 +36,7 @@ from app.modulos.facturacion.models import (
 from app.modulos.facturacion.services.consulta_externa import invalidar_cache_cruce
 from app.modulos.facturacion.services.cruce import (
     ANTES_DEL_CORTE, CERO, CON_DIFERENCIA, ESTADOS, MES_EN_CURSO,
-    PENDIENTE_DE_FACTURAR, UNIDADES, CruceMes, FilaGrupo,
+    PENDIENTE_DE_FACTURAR, UNIDADES, CruceMes, FilaCruce, FilaGrupo,
     LineaFacturada, cantidad_en_unidad, cruzar, cruzar_mes, medidas_por_tarea,
     tareas_sin_unidad,
 )
@@ -581,40 +581,38 @@ def _comprobantes(lineas: list[LineaFacturada]) -> list[dict]:
 
 
 def _grupos(cruce: CruceMes, partes: list[dict], precios: dict) -> list[dict]:
-    """Las filas del Cruce por grupo de tareas: los grupos por nombre y "Sin
-    grupo" al final; dentro de cada uno, el orden del motor. Cada fila lleva
-    sus partes medidos en su unidad (None si no tiene), por fecha.
+    """Las filas del Detalle: una por línea (grupo, unidad), como las del
+    Resumen y en el orden del motor ("Sin grupo" al final), con sus tareas
+    adentro en el orden de las filas del Cruce.
 
-    Las tareas no avisan (decisión 1 de la spec): el `supera` de cada fila es
-    el de su línea (grupo, unidad). Es el puente hasta el Detalle por grupo
-    (Ticket 2), que cambia esta forma."""
+    Las tareas no avisan (decisión 1 de la spec): la diferencia y "supera"
+    son de la fila. Cada tarea trae su Cantidad del campo en la unidad de la
+    fila, su precio y sus partes medidos en esa unidad (None si no tiene),
+    por fecha."""
     partes_por_tarea: dict[int, list[dict]] = defaultdict(list)
     for parte in sorted(partes, key=lambda p: p["fecha"]):
         partes_por_tarea[parte["tarea_id"]].append(parte)
-    superan = cruce.superan
+    return [
+        {**_linea(g), "tareas": [_tarea(f, partes_por_tarea, precios) for f in g.tareas]}
+        for g in cruce.grupos
+    ]
 
-    grupos: dict[str, list[dict]] = defaultdict(list)
-    for f in cruce.filas:
-        grupos[f.grupo_tarea or SIN_GRUPO].append({
-            "tarea_id": f.tarea_id,
-            "tarea_nombre": f.tarea_nombre,
-            "unidad": f.unidad,
-            "sin_unidad_sugerida": f.sin_unidad_sugerida,
-            "en_varias_unidades": f.en_varias_unidades,
-            "campo": f.campo,
-            "facturado": f.facturado,
-            "diferencia": f.diferencia,
-            "diferencia_pct": f.diferencia_pct,
-            "supera": (f.grupo_tarea, f.unidad) in superan,
-            "precio": precios.get((f.tarea_id, f.unidad)),
-            "partes": [
-                {"fecha": p["fecha"], "donde": p["donde"], "supervisor": p["supervisor"],
-                 "cantidad": cantidad_en_unidad(p, f.unidad)}
-                for p in partes_por_tarea.get(f.tarea_id, [])
-            ],
-        })
-    orden = sorted(grupos, key=lambda g: (g == SIN_GRUPO, g))
-    return [{"grupo": g, "tareas": grupos[g]} for g in orden]
+
+def _tarea(f: FilaCruce, partes_por_tarea: dict, precios: dict) -> dict:
+    """Una tarea dentro de su fila (grupo, unidad) del Detalle."""
+    return {
+        "tarea_id": f.tarea_id,
+        "tarea_nombre": f.tarea_nombre,
+        "sin_unidad_sugerida": f.sin_unidad_sugerida,
+        "en_varias_unidades": f.en_varias_unidades,
+        "campo": f.campo,
+        "precio": precios.get((f.tarea_id, f.unidad)),
+        "partes": [
+            {"fecha": p["fecha"], "donde": p["donde"], "supervisor": p["supervisor"],
+             "cantidad": cantidad_en_unidad(p, f.unidad)}
+            for p in partes_por_tarea.get(f.tarea_id, [])
+        ],
+    }
 
 
 def _total(cruce: CruceMes, precios: dict) -> dict:

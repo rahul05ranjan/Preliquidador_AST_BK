@@ -103,8 +103,8 @@ def detalle(
     refrescar: bool = False,
     servicio: ResumenService = Depends(get_resumen),
 ):
-    """El Cruce de un Cliente en un mes ("AAAA-MM"), tarea por tarea y hasta
-    los partes del campo."""
+    """El Cruce de un Cliente en un mes ("AAAA-MM"), una fila por grupo de
+    tareas y unidad, con sus tareas y hasta los partes del campo."""
     try:
         return servicio.detalle(cliente_id, mes, refrescar=refrescar)
     except ErrorResumen as error:

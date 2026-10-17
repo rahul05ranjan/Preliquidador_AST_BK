@@ -71,19 +71,28 @@ RESUMEN = {
     "sobra": "no va",
 }
 TAREA = {
-    "tarea_id": 101, "tarea_nombre": "PODA", "unidad": "horas_peon",
+    "tarea_id": 101, "tarea_nombre": "PODA",
     "sin_unidad_sugerida": False, "en_varias_unidades": False,
-    "campo": D("100"), "facturado": D("150"), "diferencia": D("50"),
-    "diferencia_pct": D("50.00"), "supera": True, "precio": D("50.0000"),
+    "campo": D("100"), "precio": D("50.0000"),
     "partes": [{"fecha": date(2026, 10, 3), "donde": "FINCA A",
                 "supervisor": "SUPERVISOR A", "cantidad": D("100")}],
+    "sobra": "no va",
 }
 SIN_UNIDAD = {
-    **TAREA, "tarea_id": 106, "tarea_nombre": "ATADO", "unidad": None,
-    "sin_unidad_sugerida": True, "campo": None, "diferencia": None,
-    "diferencia_pct": None, "precio": None,
+    **TAREA, "tarea_id": 106, "tarea_nombre": "ATADO",
+    "sin_unidad_sugerida": True, "campo": None, "precio": None,
     "partes": [{"fecha": date(2026, 10, 4), "donde": None, "supervisor": None,
                 "cantidad": None}],
+}
+GRUPO_DETALLE = {
+    "grupo": "MANUALES", "unidad": "horas_peon", "campo": D("100"),
+    "facturado": D("150"), "diferencia": D("50"), "diferencia_pct": D("50.00"),
+    "supera": True, "tareas": [TAREA], "sobra": "no va",
+}
+SIN_UNIDAD_DETALLE = {
+    **GRUPO_DETALLE, "grupo": "Sin grupo", "unidad": None, "campo": None,
+    "facturado": D("0"), "diferencia": None, "diferencia_pct": None,
+    "tareas": [SIN_UNIDAD],
 }
 DETALLE = {
     "cliente_id": 12, "cliente_nombre": "CLIENTE UNO", "mes": date(2026, 10, 1),
@@ -92,8 +101,7 @@ DETALLE = {
     "estados": ["facturada"], "diferencia_revisada": True, "se_puede_revisar": False,
     "comprobantes": [{"id": 5, "tipo": "factura", "numero": "A 0001",
                       "cantidad_adjuntos": 1, "es_historico": False}],
-    "grupos": [{"grupo": "MANUALES", "tareas": [TAREA]},
-               {"grupo": "Sin grupo", "tareas": [SIN_UNIDAD]}],
+    "grupos": [GRUPO_DETALLE, SIN_UNIDAD_DETALLE],
     "total": {"campo_pesos": D("5000.00"), "facturado_pesos": D("7500.00"),
               "diferencia_pesos": D("2500.00"), "diferencia_pct": D("50.00"),
               "tareas_sin_precio": 1},
@@ -119,9 +127,9 @@ CLAVES_LINEA = {"grupo", "unidad", "campo", "facturado", "diferencia", "diferenc
 CLAVES_DETALLE = {"cliente_id", "cliente_nombre", "mes", "umbral_pct", "mes_corte",
                   "leido_en", "estados", "diferencia_revisada", "se_puede_revisar",
                   "comprobantes", "grupos", "total", "revision"}
-CLAVES_TAREA = {"tarea_id", "tarea_nombre", "unidad", "sin_unidad_sugerida",
-                "en_varias_unidades", "campo", "facturado", "diferencia",
-                "diferencia_pct", "supera", "precio", "partes"}
+CLAVES_GRUPO_DETALLE = CLAVES_LINEA | {"tareas"}
+CLAVES_TAREA = {"tarea_id", "tarea_nombre", "sin_unidad_sugerida",
+                "en_varias_unidades", "campo", "precio", "partes"}
 CLAVES_TOTAL = {"campo_pesos", "facturado_pesos", "diferencia_pesos",
                 "diferencia_pct", "tareas_sin_precio"}
 CLAVES_REVISION = {"id", "comentario", "creada_en", "creada_por_nombre", "grupos"}
@@ -275,17 +283,27 @@ def test_el_detalle_sale_con_la_forma_del_contrato():
     assert cuerpo["umbral_pct"] == "5.00"
     assert cuerpo["comprobantes"] == [{"id": 5, "tipo": "factura", "numero": "A 0001",
                                        "cantidad_adjuntos": 1, "es_historico": False}]
-    assert [g["grupo"] for g in cuerpo["grupos"]] == ["MANUALES", "Sin grupo"]
-    poda = cuerpo["grupos"][0]["tareas"][0]
+    # Una fila por (grupo, unidad), con la diferencia y "supera"; sus tareas,
+    # con la Cantidad del campo, el precio y los partes.
+    assert [set(g) for g in cuerpo["grupos"]] == [CLAVES_GRUPO_DETALLE] * 2
+    manuales = cuerpo["grupos"][0]
+    assert (manuales["grupo"], manuales["unidad"], manuales["campo"], manuales["facturado"],
+            manuales["diferencia"], manuales["diferencia_pct"], manuales["supera"]) == (
+        "MANUALES", "horas_peon", "100", "150", "50", "50.00", True)
+    poda = manuales["tareas"][0]
     assert set(poda) == CLAVES_TAREA
-    assert (poda["campo"], poda["facturado"], poda["diferencia_pct"], poda["precio"]) == (
-        "100", "150", "50.00", "50.0000")
+    assert (poda["campo"], poda["precio"]) == ("100", "50.0000")
     assert poda["partes"] == [{"fecha": "2026-10-03", "donde": "FINCA A",
                                "supervisor": "SUPERVISOR A", "cantidad": "100"}]
-    # Una tarea sin unidad: sin campo, sin % y sin precio.
-    atado = cuerpo["grupos"][1]["tareas"][0]
-    assert (atado["unidad"], atado["campo"], atado["diferencia_pct"], atado["precio"]) == (
-        None, None, None, None)
+    # Una fila sin unidad: sin campo, sin diferencia y sin %; su tarea, sin
+    # campo y sin precio.
+    sin_unidad = cuerpo["grupos"][1]
+    assert (sin_unidad["grupo"], sin_unidad["unidad"], sin_unidad["campo"],
+            sin_unidad["diferencia"], sin_unidad["diferencia_pct"]) == (
+        "Sin grupo", None, None, None, None)
+    atado = sin_unidad["tareas"][0]
+    assert (atado["sin_unidad_sugerida"], atado["campo"], atado["precio"]) == (
+        True, None, None)
     assert atado["partes"][0]["cantidad"] is None
     assert set(cuerpo["total"]) == CLAVES_TOTAL
     assert cuerpo["total"]["campo_pesos"] == "5000.00"
@@ -502,6 +520,9 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     assert set(detalle) == CLAVES_DETALLE
     assert detalle["se_puede_revisar"] is True
     assert detalle["revision"] is None
+    assert all(set(g) == CLAVES_GRUPO_DETALLE for g in detalle["grupos"])
+    assert [(g["grupo"], g["unidad"], g["supera"]) for g in detalle["grupos"]] == [
+        ("MANUALES", "horas_peon", True), ("MANUALES", "plantas", False)]
     tareas = [t for g in detalle["grupos"] for t in g["tareas"]]
     assert all(set(t) == CLAVES_TAREA for t in tareas)
     assert set(detalle["total"]) == CLAVES_TOTAL

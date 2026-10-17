@@ -1,15 +1,16 @@
 """El Detalle de un Cliente en un mes (plan de la E3, paso A8, y el contrato de
 la ruta 14), sobre SQLite en memoria y con una consulta del campo falsa.
 
-Lo que se cuida acá: el Campo de cada fila es la suma de sus partes en su
-unidad, y una tarea en dos unidades muestra los mismos partes con la medida de
-cada fila; las tareas van por grupo; los pesos salen del precio medio de las
-Facturas del mes, si no del Precio sugerido, y si tampoco hay la tarea queda
-sin precio (también si el precio medio da 0 o menos, paso A8b); la Revisión
-vigente trae quién la dejó y sus (grupo, unidad); una tarea supera si supera
-su línea (grupo, unidad), el puente hasta el Detalle por grupo del Ticket 2;
-los estados son los del Resumen para el mismo mes, porque los dos pasan por
-el mismo motor; y el 404 sigue la regla del contrato.
+Lo que se cuida acá: el Detalle tiene una fila por (grupo de tareas, unidad),
+como las líneas del Resumen, con sus tareas adentro (Ticket 2 de la spec de la
+E3a por grupo); la diferencia y "supera" son de la fila, y las tareas no
+avisan: traen la Cantidad del campo en la unidad de su fila y sus partes; una
+tarea en dos unidades va en las dos filas, con los mismos partes medidos en
+cada una; los pesos salen del precio medio de las Facturas del mes, si no del
+Precio sugerido, y si tampoco hay la tarea queda sin precio (también si el
+precio medio da 0 o menos, paso A8b); la Revisión vigente trae quién la dejó y
+sus (grupo, unidad); los estados son los del Resumen para el mismo mes, porque
+los dos pasan por el mismo motor; y el 404 sigue la regla del contrato.
 
 La consulta falsa arma lo trabajado por mes del Resumen con los mismos partes
 que da al Detalle, así las dos pantallas leen el mismo campo.
@@ -201,8 +202,24 @@ def revision(db, cliente_id, mes, grupos, *, creada_en, creada_por=None,
 
 
 def tareas(detalle):
-    """Las filas del Detalle, en orden, sin los grupos."""
-    return [t for g in detalle["grupos"] for t in g["tareas"]]
+    """Las tareas del Detalle, en orden, cada una con la unidad de su fila
+    (grupo, unidad) en "unidad", para buscarlas."""
+    return [{**t, "unidad": g["unidad"]} for g in detalle["grupos"] for t in g["tareas"]]
+
+
+def linea(detalle, grupo, unidad):
+    """La fila (grupo, unidad) del Detalle, sin sus tareas."""
+    encontradas = [{k: v for k, v in g.items() if k != "tareas"}
+                   for g in detalle["grupos"]
+                   if (g["grupo"], g["unidad"]) == (grupo, unidad)]
+    assert len(encontradas) == 1, detalle["grupos"]
+    return encontradas[0]
+
+
+def medidas(detalle, grupo, unidad):
+    """(campo, facturado, diferencia, diferencia_pct, supera) de una fila."""
+    g = linea(detalle, grupo, unidad)
+    return (g["campo"], g["facturado"], g["diferencia"], g["diferencia_pct"], g["supera"])
 
 
 def fila(detalle, tarea_id, unidad=None):
@@ -274,30 +291,29 @@ def test_el_campo_de_cada_fila_es_la_suma_de_sus_partes(db, servicio, consulta):
     poda = fila(detalle, PODA)
     assert poda["unidad"] == "horas_peon"
     assert poda["campo"] == D("20.5")
-    assert poda["facturado"] == D("20")
-    assert poda["diferencia"] == D("-0.5")
-    assert poda["diferencia_pct"] == D("-2.44")
-    assert poda["supera"] is False
+    assert medidas(detalle, "MANUALES", "horas_peon") == (
+        D("20.5"), D("20"), D("-0.5"), D("-2.44"), False)
     assert poda["partes"] == [
         {"fecha": date(2026, 10, 3), "donde": "FINCA A", "supervisor": "SUPERVISOR A",
          "cantidad": D("8")},
         {"fecha": date(2026, 10, 17), "donde": "FINCA B", "supervisor": None,
          "cantidad": D("12.5")},
     ]
-    # El panel da igual que la columna.
+    # El modal da igual que la columna.
     assert sum(p["cantidad"] for p in poda["partes"]) == poda["campo"]
 
-    # RALEO no tiene nada facturado: va con su Unidad sugerida, plantas, y
-    # cada parte se mide en plantas, no en horas.
+    # RALEO no tiene nada facturado: va con su Unidad sugerida, plantas, en
+    # su propia fila, y cada parte se mide en plantas, no en horas.
     raleo = fila(detalle, RALEO)
-    assert (raleo["unidad"], raleo["campo"], raleo["facturado"]) == ("plantas", D("500"), D("0"))
+    assert (raleo["unidad"], raleo["campo"]) == ("plantas", D("500"))
     assert [p["cantidad"] for p in raleo["partes"]] == [D("300"), D("200")]
-    assert raleo["supera"] is True
+    assert medidas(detalle, "MANUALES", "plantas") == (
+        D("500"), D("0"), D("-500"), D("-100.00"), True)
 
 
-def test_una_tarea_supera_si_supera_su_grupo(db, servicio, consulta):
+def test_las_tareas_no_avisan_avisa_su_fila(db, servicio, consulta):
     # PODA facturada de menos y ATADO (facturado en horas de peón) de más:
-    # MANUALES en horas de peón cierra (150 contra 150) y ninguna avisa.
+    # MANUALES en horas de peón cierra (150 contra 150) y nadie avisa.
     consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="100")
     consulta.parte(UNO, ATADO, date(2026, 10, 3), jornal="50")
     comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "50", "2500"),
@@ -306,7 +322,16 @@ def test_una_tarea_supera_si_supera_su_grupo(db, servicio, consulta):
 
     detalle = servicio.detalle(UNO, "2026-10")
 
-    assert [t["supera"] for t in tareas(detalle)] == [False, False]
+    assert medidas(detalle, "MANUALES", "horas_peon") == (
+        D("150"), D("150"), D("0"), D("0.00"), False)
+    # Una fila, con las dos tareas y la Cantidad del campo de cada una. Las
+    # tareas no traen lo facturado ni la diferencia: no se comparan solas.
+    assert [(g["grupo"], g["unidad"]) for g in detalle["grupos"]] == [
+        ("MANUALES", "horas_peon")]
+    assert [(t["tarea_nombre"], t["campo"]) for t in tareas(detalle)] == [
+        ("ATADO", D("50")), ("PODA", D("100"))]
+    for t in detalle["grupos"][0]["tareas"]:
+        assert not {"facturado", "diferencia", "diferencia_pct", "supera"} & set(t)
     assert detalle["estados"] == ["facturada"]
 
 
@@ -345,26 +370,50 @@ def test_agrupa_por_grupo_de_tareas(db, servicio, consulta):
 
     detalle = servicio.detalle(UNO, "2026-10")
 
-    assert [(g["grupo"], [t["tarea_nombre"] for t in g["tareas"]])
+    # Una fila por (grupo, unidad): por grupo, con "Sin grupo" al final
+    # aunque por nombre iría antes de VIVERO, y dentro del grupo por unidad,
+    # con la fila sin unidad al final. Las tareas, por nombre.
+    assert [(g["grupo"], g["unidad"], [t["tarea_nombre"] for t in g["tareas"]])
             for g in detalle["grupos"]] == [
-        ("MANUALES", ["ATADO", "PODA", "RALEO"]),
-        ("MAQUINARIA", ["RASTREADO"]),
-        ("VIVERO", ["TRASPLANTE"]),
-        # Al final, aunque por nombre iría antes de VIVERO.
-        ("Sin grupo", ["DESMALEZADO", "TAREA VIEJA"]),
+        ("MANUALES", "horas_peon", ["PODA"]),
+        ("MANUALES", "plantas", ["RALEO"]),
+        ("MANUALES", None, ["ATADO"]),
+        ("MAQUINARIA", "horas_tractor", ["RASTREADO"]),
+        ("VIVERO", "plantas", ["TRASPLANTE"]),
+        ("Sin grupo", "horas_peon", ["DESMALEZADO", "TAREA VIEJA"]),
     ]
     vieja = fila(detalle, TAREA_VIEJA)
-    assert (vieja["tarea_id"], vieja["unidad"], vieja["campo"]) == (
-        TAREA_VIEJA, "horas_peon", D("0"))
-    # La tarea sin Unidad sugerida: sin unidad, sin campo y sin cantidad en
-    # sus partes, pero con sus partes a la vista.
+    assert (vieja["tarea_id"], vieja["campo"], vieja["partes"]) == (TAREA_VIEJA, D("0"), [])
+    # Sin grupo en horas de peón: 2 trabajadas y 3 facturadas, las de TAREA
+    # VIEJA, que no tiene partes.
+    assert medidas(detalle, "Sin grupo", "horas_peon") == (
+        D("2"), D("3"), D("1"), D("50.00"), True)
+    # La fila sin unidad (ATADO, sin Unidad sugerida y sin nada facturado):
+    # sin campo, sin diferencia y sin %, y la tarea lo dice; sus partes se ven
+    # igual, sin cantidad.
+    assert medidas(detalle, "MANUALES", None) == (None, D("0"), None, None, True)
     atado = fila(detalle, ATADO)
     assert atado["sin_unidad_sugerida"] is True
-    assert (atado["unidad"], atado["campo"], atado["diferencia"],
-            atado["diferencia_pct"]) == (None, None, None, None)
+    assert atado["campo"] is None
     assert atado["partes"] == [{"fecha": date(2026, 10, 3), "donde": "FINCA A",
                                 "supervisor": "SUPERVISOR A", "cantidad": None}]
     assert fila(detalle, PODA)["sin_unidad_sugerida"] is False
+
+
+def test_un_grupo_en_dos_unidades_da_dos_filas(db, servicio, consulta):
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="10")
+    # RALEO facturado en hectáreas y sin partes: lo facturado sin campo supera.
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "10", "1000"),
+                          (RALEO, "hectareas", date(2026, 10, 1), "2.5", "500")],
+                adjuntos=1)
+
+    detalle = servicio.detalle(UNO, "2026-10")
+
+    assert medidas(detalle, "MANUALES", "horas_peon") == (
+        D("10"), D("10"), D("0"), D("0.00"), False)
+    assert medidas(detalle, "MANUALES", "hectareas") == (
+        D("0"), D("2.5"), D("2.5"), None, True)
+    assert detalle["estados"] == ["con_diferencia"]
 
 
 # ─── Pesos ──────────────────────────────────────────────────────────────────
@@ -569,10 +618,10 @@ def test_en_los_meses_que_no_se_controlan_nada_supera(db, servicio, consulta, me
 
     assert detalle["estados"] == estados
     assert len(tareas(detalle)) == 3
-    assert all(t["supera"] is False for t in tareas(detalle))
+    assert all(g["supera"] is False for g in detalle["grupos"])
     assert detalle["se_puede_revisar"] is False
     # Los números se muestran igual.
-    assert fila(detalle, PODA)["diferencia"] == D("-90")
+    assert linea(detalle, "MANUALES", "horas_peon")["diferencia"] == D("-90")
 
 
 # ─── 404 y errores ──────────────────────────────────────────────────────────

@@ -236,29 +236,25 @@ class ParteCampo(BaseModel):
 
 
 class TareaDetalle(BaseModel):
-    """Una fila del Detalle: una (tarea, unidad)."""
+    """Una tarea dentro de su fila (grupo, unidad) del Detalle. No avisa:
+    la diferencia y "supera" son de la fila."""
     tarea_id: int
     # Del maestro o, si la tarea no está ahí, de la Línea.
     tarea_nombre: str | None = None
-    # La de lo facturado en el mes, si no la sugerida; None si no hay ninguna.
-    unidad: str | None = None
     sin_unidad_sugerida: bool
+    # La tarea va también en otra fila del mismo grupo, en otra unidad.
     en_varias_unidades: bool
-    # None si la fila no tiene unidad.
+    # La Cantidad del campo en la unidad de la fila; None si la fila no
+    # tiene unidad.
     campo: Decimal | None = None
-    facturado: Decimal
-    diferencia: Decimal | None = None
-    # None ("—") si el campo es 0 o no hay.
-    diferencia_pct: Decimal | None = None
-    supera: bool
     # El precio medio del mes o el Precio sugerido; None si no hay ninguno.
     precio: Decimal | None = None
     partes: list[ParteCampo] = []
 
 
-class GrupoDetalle(BaseModel):
-    """Un grupo de tareas del maestro, o "Sin grupo"."""
-    grupo: str
+class GrupoDetalle(LineaResumen):
+    """Una fila del Detalle: la línea (grupo, unidad) del Resumen, con sus
+    tareas."""
     tareas: list[TareaDetalle]
 
 
