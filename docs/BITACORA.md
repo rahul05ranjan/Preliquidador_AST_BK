@@ -4254,3 +4254,28 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 - Los 16 minor (8 de la revisión, 8 de `impeccable`), en los cuerpos del BK #103 y el FT #84 y en
   "A futuro" de `docs/estado.md`.
 - La E3b toma el período del filtro como Período facturado y usa el mismo calendario.
+
+## 2026-10-17 — Deploy de la Facturación E3a por grupo y del control por período (BK #102 y #103)
+
+**Estado**
+- Deploy: sí, a producción, con OK del usuario. Backend de `59304b2` a `6b9f953` (`main` con los
+  merges del BK #100, #102 y #103); frontend de `435d50b` a `15a4550` (merges del FT #83 y #84),
+  build desde `main` con el bundle igual en local y en el servidor. Sin dependencias ni variables
+  de entorno nuevas. Facturación sigue escondida: nadie tiene su rol.
+- Migraciones, con respaldo previo de `rol_permiso`: con el backend parado, la `facturacion/004`
+  y la `facturacion/006` (pre-check sin ninguna de sus tablas; quedan la configuración, la
+  Revisión con su período y la Revisión por grupo, las tres vacías); después del arranque, la
+  `facturacion/005`, dos veces: la primera borró los 2 permisos guardados de `pendientes` y
+  `cruce`, la segunda no encontró nada.
+- Smoke sin escribir: `/health` ok, las rutas del Resumen y del Detalle sin sesión responden
+  401, el sitio sirve el bundle nuevo, el arranque verificó las tablas y el log queda sin
+  errores. No probado: las pantallas con un usuario logueado (nadie tiene el rol).
+- La F5 contra Power BI deja de ser pendiente: lo decidió el usuario al pedir el deploy.
+- Vuelta atrás: reinsertar los 2 permisos del respaldo; con el backend parado, la vuelta atrás
+  comentada de la 006 y la 004 (sin datos reales); el código anterior y la carpeta anterior del
+  front.
+
+**Pendiente**
+- Borrar del servidor el respaldo de `rol_permiso` cuando ya no haga falta como vuelta atrás (en
+  `docs/estado.md`).
+- La E3b (Precarga y Período facturado, con el mismo calendario).
