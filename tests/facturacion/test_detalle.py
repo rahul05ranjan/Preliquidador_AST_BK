@@ -5,10 +5,11 @@ Lo que se cuida acá: el Campo de cada fila es la suma de sus partes en su
 unidad, y una tarea en dos unidades muestra los mismos partes con la medida de
 cada fila; las tareas van por grupo; los pesos salen del precio medio de las
 Facturas del mes, si no del Precio sugerido, y si tampoco hay la tarea queda
-sin precio (también si el precio medio da 0 o menos, paso A8b); la Revisión vigente trae quién la dejó y el nombre de cada tarea
-(del maestro o, si no está ahí, de las Líneas del mes); los estados son los
-del Resumen para el mismo mes, porque los dos pasan por el mismo motor; y el
-404 sigue la regla del contrato.
+sin precio (también si el precio medio da 0 o menos, paso A8b); la Revisión
+vigente trae quién la dejó y sus (grupo, unidad); una tarea supera si supera
+su línea (grupo, unidad), el puente hasta el Detalle por grupo del Ticket 2;
+los estados son los del Resumen para el mismo mes, porque los dos pasan por
+el mismo motor; y el 404 sigue la regla del contrato.
 
 La consulta falsa arma lo trabajado por mes del Resumen con los mismos partes
 que da al Detalle, así las dos pantallas leen el mismo campo.
@@ -30,7 +31,7 @@ from app.core.database import Base
 from app.core.models import Usuario
 from app.modulos.facturacion import config, fechas
 from app.modulos.facturacion.models import (
-    Adjunto, Comprobante, LineaComprobante, RevisionDiferencia, RevisionTarea,
+    Adjunto, Comprobante, LineaComprobante, RevisionDiferencia, RevisionGrupo,
 )
 from app.modulos.facturacion.services import consulta_externa
 from app.modulos.facturacion.services.precios import precios_sugeridos
@@ -186,13 +187,14 @@ def comprobante(db, cliente_id, lineas, *, tipo="factura", es_historico=False,
     return c
 
 
-def revision(db, cliente_id, mes, tareas, *, creada_en, creada_por=None,
+def revision(db, cliente_id, mes, grupos, *, creada_en, creada_por=None,
              deshecha=False, comentario="Explicada."):
+    """Una Revisión del mes entero."""
     r = RevisionDiferencia(
-        cliente_id=cliente_id, mes=mes, comentario=comentario,
-        creada_en=creada_en, creada_por=creada_por,
+        cliente_id=cliente_id, mes=mes, desde=mes, hasta=fechas.fin_de_mes(mes),
+        comentario=comentario, creada_en=creada_en, creada_por=creada_por,
         deshecha_en=datetime(2026, 11, 9) if deshecha else None,
-        tareas=[RevisionTarea(tarea_id=t, unidad=u) for t, u in tareas])
+        grupos=[RevisionGrupo(grupo=g, unidad=u) for g, u in grupos])
     db.add(r)
     db.commit()
     return r
@@ -291,6 +293,21 @@ def test_el_campo_de_cada_fila_es_la_suma_de_sus_partes(db, servicio, consulta):
     assert (raleo["unidad"], raleo["campo"], raleo["facturado"]) == ("plantas", D("500"), D("0"))
     assert [p["cantidad"] for p in raleo["partes"]] == [D("300"), D("200")]
     assert raleo["supera"] is True
+
+
+def test_una_tarea_supera_si_supera_su_grupo(db, servicio, consulta):
+    # PODA facturada de menos y ATADO (facturado en horas de peón) de más:
+    # MANUALES en horas de peón cierra (150 contra 150) y ninguna avisa.
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="100")
+    consulta.parte(UNO, ATADO, date(2026, 10, 3), jornal="50")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "50", "2500"),
+                          (ATADO, "horas_peon", date(2026, 10, 1), "100", "5000")],
+                adjuntos=1)
+
+    detalle = servicio.detalle(UNO, "2026-10")
+
+    assert [t["supera"] for t in tareas(detalle)] == [False, False]
+    assert detalle["estados"] == ["facturada"]
 
 
 def test_una_tarea_en_dos_unidades_muestra_sus_partes_en_cada_fila(db, servicio, consulta):
@@ -443,14 +460,15 @@ def test_un_precio_medio_de_0_o_menos_deja_la_tarea_sin_precio(db, servicio, con
 
 # ─── Revisión ───────────────────────────────────────────────────────────────
 
-def test_la_revision_vigente_trae_quien_y_el_nombre_de_cada_tarea(db, servicio, consulta,
-                                                                    persona):
+def test_la_revision_vigente_trae_quien_y_sus_grupos(db, servicio, consulta, persona):
     consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="100")
     comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500"),
                           (TAREA_VIEJA, "horas_peon", date(2026, 10, 1), "3", "300",
                            "100", "TAREA VIEJA")], adjuntos=1)
-    revision(db, UNO, OCTUBRE, [(PODA, "horas_peon")], creada_en=datetime(2026, 11, 1))
-    vigente = revision(db, UNO, OCTUBRE, [(TAREA_VIEJA, "horas_peon"), (PODA, "horas_peon")],
+    revision(db, UNO, OCTUBRE, [("MANUALES", "horas_peon")],
+             creada_en=datetime(2026, 11, 1))
+    # TAREA VIEJA no está en el maestro: va en Sin grupo, que se guarda nulo.
+    vigente = revision(db, UNO, OCTUBRE, [(None, "horas_peon"), ("MANUALES", "horas_peon")],
                        creada_en=datetime(2026, 11, 5, 12, 30), creada_por=persona.id,
                        comentario="Acordado con el Cliente.")
     revision(db, UNO, OCTUBRE, [], creada_en=datetime(2026, 11, 8), deshecha=True)
@@ -464,9 +482,10 @@ def test_la_revision_vigente_trae_quien_y_el_nombre_de_cada_tarea(db, servicio, 
         "comentario": "Acordado con el Cliente.",
         "creada_en": datetime(2026, 11, 5, 12, 30),
         "creada_por_nombre": "PERSONA DE PRUEBA",
-        "tareas": [
-            {"tarea_id": PODA, "tarea_nombre": "PODA", "unidad": "horas_peon"},
-            {"tarea_id": TAREA_VIEJA, "tarea_nombre": "TAREA VIEJA", "unidad": "horas_peon"},
+        # Por grupo, con Sin grupo al final, como las líneas del Resumen.
+        "grupos": [
+            {"grupo": "MANUALES", "unidad": "horas_peon"},
+            {"grupo": "Sin grupo", "unidad": "horas_peon"},
         ],
     }
     assert (detalle["estados"], detalle["diferencia_revisada"]) == (["facturada"], True)
@@ -477,8 +496,8 @@ def test_sin_revision_vigente_es_null(db, servicio, consulta):
     consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="100")
     comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
                 adjuntos=1)
-    revision(db, UNO, OCTUBRE, [(PODA, "horas_peon")], creada_en=datetime(2026, 11, 1),
-             deshecha=True)
+    revision(db, UNO, OCTUBRE, [("MANUALES", "horas_peon")],
+             creada_en=datetime(2026, 11, 1), deshecha=True)
 
     detalle = servicio.detalle(UNO, "2026-10")
 
@@ -502,7 +521,7 @@ def test_los_estados_son_los_del_resumen_para_el_mismo_mes(db, servicio, consult
     consulta.parte(CINCO, PODA, date(2026, 10, 3), jornal="100")
     comprobante(db, CINCO, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
                 adjuntos=1)
-    revision(db, CINCO, OCTUBRE, [(PODA, "horas_peon")],
+    revision(db, CINCO, OCTUBRE, [("MANUALES", "horas_peon")],
              creada_en=datetime(2026, 11, 1))                            # revisada
     consulta.parte(TRES, RALEO, date(2026, 10, 3), unidades="300")
     comprobante(db, TRES, [(RALEO, "plantas", date(2026, 10, 1), "300", "900")])

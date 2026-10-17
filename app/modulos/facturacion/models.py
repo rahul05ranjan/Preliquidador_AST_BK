@@ -8,7 +8,8 @@ faltantes del arranque cubra al módulo.
 La tabla de la E1 se borró con `facturacion/002`, porque la Unidad sugerida se
 lee del sistema de campo. Las de acá son de la E2 (`facturacion/003`): el
 Comprobante, sus Líneas y sus Adjuntos; y de la E3 (`facturacion/004`): la
-configuración del Resumen y la Revisión de diferencia con sus tareas.
+configuración del Resumen y la Revisión de diferencia, que la `facturacion/006`
+pasó a grupos de tareas con su período.
 """
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric,
@@ -173,12 +174,13 @@ class Configuracion(Base):
 
 
 class RevisionDiferencia(Base):
-    """La Revisión de diferencia de un Cliente en un mes (004).
+    """La Revisión de diferencia de un Cliente en un mes y un período (004 y 006).
 
-    Guarda el comentario, quién y cuándo, y en `tareas` las (tarea, unidad) que
-    superaban el Umbral cuando se dejó. No se borra al deshacerla: se sellan
-    `deshecha_en` y `deshecha_por`, y queda en el registro. La vigente es la más
-    reciente del (Cliente, mes) que no fue deshecha.
+    Guarda el comentario, quién y cuándo, el período en que se dejó (`desde` y
+    `hasta`, dentro del mes) y en `grupos` las (grupo, unidad) que superaban el
+    Umbral cuando se dejó. No se borra al deshacerla: se sellan `deshecha_en` y
+    `deshecha_por`, y queda en el registro. La vigente es la más reciente del
+    (Cliente, mes, período exacto) que no fue deshecha.
     """
     __tablename__ = "facturacion_revision"
 
@@ -187,6 +189,10 @@ class RevisionDiferencia(Base):
     cliente_id   = Column(Integer, nullable=False)
     # El día 1 del mes.
     mes          = Column(Date, nullable=False)
+    # El período revisado, los dos días incluidos y dentro del mes. Las
+    # Revisiones anteriores a la 006 quedaron con el mes entero.
+    desde        = Column(Date, nullable=False)
+    hasta        = Column(Date, nullable=False)
     comentario   = Column(String(500), nullable=False)
     creada_en    = Column(DateTime, nullable=False, default=ahora_utc)
     creada_por   = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
@@ -194,33 +200,35 @@ class RevisionDiferencia(Base):
     deshecha_en  = Column(DateTime, nullable=True)
     deshecha_por = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
 
-    tareas = relationship(
-        "RevisionTarea", back_populates="revision",
-        cascade="all, delete-orphan", order_by="RevisionTarea.id",
+    grupos = relationship(
+        "RevisionGrupo", back_populates="revision",
+        cascade="all, delete-orphan", order_by="RevisionGrupo.id",
     )
 
     __table_args__ = (
-        Index("ix_facturacion_revision_cliente_mes", "cliente_id", "mes"),
+        # No único: se guardan todas, también las deshechas.
+        Index("ix_facturacion_revision_cliente_mes_periodo",
+              "cliente_id", "mes", "desde", "hasta"),
     )
 
 
-class RevisionTarea(Base):
-    """Una (tarea, unidad) que superaba cuando se dejó la Revisión (004)."""
-    __tablename__ = "facturacion_revision_tarea"
+class RevisionGrupo(Base):
+    """Una (grupo de tareas, unidad) que superaba cuando se dejó la Revisión (006)."""
+    __tablename__ = "facturacion_revision_grupo"
 
     id          = Column(Integer, primary_key=True, autoincrement=True)
-    # En la base, ON DELETE CASCADE: las tareas caen con su Revisión.
+    # En la base, ON DELETE CASCADE: los grupos caen con su Revisión.
     revision_id = Column(
         Integer, ForeignKey("facturacion_revision.id", ondelete="CASCADE"), nullable=False,
     )
-    # El id de la tarea en el sistema de campo.
-    tarea_id    = Column(Integer, nullable=False)
+    # El grupo de tareas del maestro del campo, como se leyó. NULL = Sin grupo.
+    grupo       = Column(String(255), nullable=True)
     # Una de las claves de unidades.py, como LineaComprobante.unidad. NULL = la
-    # tarea no tenía unidad (sin facturado y sin Unidad sugerida).
+    # línea no tenía unidad (tareas sin facturado y sin Unidad sugerida).
     unidad      = Column(String(20), nullable=True)
 
-    revision = relationship("RevisionDiferencia", back_populates="tareas")
+    revision = relationship("RevisionDiferencia", back_populates="grupos")
 
     __table_args__ = (
-        Index("ix_facturacion_revision_tarea_revision", "revision_id"),
+        Index("ix_facturacion_revision_grupo_revision", "revision_id"),
     )

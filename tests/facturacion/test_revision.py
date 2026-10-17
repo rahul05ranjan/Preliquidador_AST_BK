@@ -5,10 +5,11 @@ Detalle.
 Lo que se cuida acá: el comentario es obligatorio y de hasta 500 caracteres,
 medidos después de recortar los espacios de los bordes; sólo se revisa un mes
 Con diferencia (cualquier otro estado da 409 `no_revisable`, con un mensaje
-según el estado); la Revisión guarda quién, cuándo y las (tarea, unidad) que
-superaban, calculadas con los mismos datos que vio el Detalle; con ella el mes
-queda Facturada y revisada, hasta que supere una tarea nueva; y deshacerla deja
-el registro sellado y el mes otra vez Con diferencia.
+según el estado); la Revisión guarda quién, cuándo, su período (hasta el
+Ticket 4, siempre el mes entero) y las (grupo, unidad) que superaban,
+calculadas con los mismos datos que vio el Detalle; con ella el mes queda
+Facturada y revisada, hasta que supere un grupo nuevo; y deshacerla deja el
+registro sellado y el mes otra vez Con diferencia.
 
 Hoy es el 10 de noviembre de 2026: noviembre es el mes en curso y, con el
 corte inicial en octubre, octubre se controla y septiembre queda Antes del
@@ -119,8 +120,8 @@ def revisiones(db):
     return list(db.scalars(select(RevisionDiferencia).order_by(RevisionDiferencia.id)))
 
 
-def tareas_de(revision):
-    return {(t.tarea_id, t.unidad) for t in revision.tareas}
+def grupos_de(revision):
+    return {(g.grupo, g.unidad) for g in revision.grupos}
 
 
 # ─── Comentario ─────────────────────────────────────────────────────────────
@@ -229,10 +230,11 @@ def test_un_mes_ya_revisado_no_se_vuelve_a_revisar(db, servicio, consulta, perso
 
 # ─── Qué guarda ─────────────────────────────────────────────────────────────
 
-def test_guarda_quien_cuando_y_las_tareas_que_superaban(db, servicio, consulta, persona,
-                                                        reloj):
+def test_guarda_quien_cuando_el_mes_entero_y_los_grupos_que_superaban(
+        db, servicio, consulta, persona, reloj):
     con_diferencia(db, consulta)
-    # ATADO no tiene unidad: trabajada y sin facturar, supera sin unidad.
+    # ATADO no tiene unidad: trabajada y sin facturar, su línea de MANUALES
+    # sin unidad supera.
     consulta.parte(UNO, ATADO, date(2026, 10, 4), jornal="6")
     # Otro Cliente con diferencia en el mismo mes: no entra.
     con_diferencia(db, consulta, cliente_id=DOS)
@@ -242,12 +244,17 @@ def test_guarda_quien_cuando_y_las_tareas_que_superaban(db, servicio, consulta, 
     [guardada] = revisiones(db)
     assert guardada.cliente_id == UNO
     assert guardada.mes == OCTUBRE
+    # El período: el mes entero, del 1 al último día.
+    assert (guardada.desde, guardada.hasta) == (OCTUBRE, date(2026, 10, 31))
     assert guardada.comentario == "Acordado con el Cliente."
     assert guardada.creada_en == DEJADA
     assert guardada.creada_por == persona.id
     assert (guardada.deshecha_en, guardada.deshecha_por) == (None, None)
-    # Las que superaban; RALEO, que no superaba, no.
-    assert tareas_de(guardada) == {(PODA, "horas_peon"), (ATADO, None)}
+    # Las líneas que superaban; la de plantas (RALEO), que no, no.
+    assert grupos_de(guardada) == {("MANUALES", "horas_peon"), ("MANUALES", None)}
+    # En el orden de las líneas: por unidad, la que no tiene al final.
+    assert [(g.grupo, g.unidad) for g in guardada.grupos] == [
+        ("MANUALES", "horas_peon"), ("MANUALES", None)]
 
 
 def test_lee_los_partes_del_mes_sin_vaciar_la_cache(db, servicio, consulta, persona, reloj,
@@ -277,15 +284,14 @@ def test_devuelve_el_detalle_facturada_y_revisada(db, servicio, consulta, person
     assert detalle["se_puede_revisar"] is False
     assert detalle["revision"]["id"] == guardada.id
     assert detalle["revision"]["creada_por_nombre"] == "PERSONA DE PRUEBA"
-    assert detalle["revision"]["tareas"] == [
-        {"tarea_id": PODA, "tarea_nombre": "PODA", "unidad": "horas_peon"}]
+    assert detalle["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
     # Y el Resumen dice lo mismo.
     [fila] = servicio.resumen("2026-10", "2026-10")["filas"]
     assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
 
 
-def test_una_tarea_nueva_que_supera_pide_otra_revision(db, servicio, consulta, persona,
-                                                       otra_persona, reloj):
+def test_un_grupo_nuevo_que_supera_pide_otra_revision(db, servicio, consulta, persona,
+                                                      otra_persona, reloj):
     con_diferencia(db, consulta)
     primera = servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)["revision"]
 
@@ -300,7 +306,7 @@ def test_una_tarea_nueva_que_supera_pide_otra_revision(db, servicio, consulta, p
 
     vieja, nueva = revisiones(db)
     assert vieja.id == primera["id"]
-    assert tareas_de(nueva) == {(PODA, "horas_peon"), (RALEO, "plantas")}
+    assert grupos_de(nueva) == {("MANUALES", "horas_peon"), ("MANUALES", "plantas")}
     assert (nueva.creada_por, nueva.creada_en) == (otra_persona.id, DESHECHA)
     # La nueva es la vigente, y cubre las dos.
     assert detalle["revision"]["id"] == nueva.id
@@ -335,12 +341,12 @@ def test_deshacer_sella_el_registro_y_el_mes_vuelve_a_con_diferencia(
     reloj["ahora"] = DESHECHA
     detalle = servicio.deshacer_revision(UNO, "2026-10", otra_persona.id)
 
-    # No se borra: queda con quién y cuándo la deshizo, y con sus tareas.
+    # No se borra: queda con quién y cuándo la deshizo, y con sus grupos.
     [guardada] = revisiones(db)
     assert (guardada.deshecha_en, guardada.deshecha_por) == (DESHECHA, otra_persona.id)
     assert (guardada.creada_en, guardada.creada_por) == (DEJADA, persona.id)
     assert guardada.comentario == "Explicada."
-    assert tareas_de(guardada) == {(PODA, "horas_peon")}
+    assert grupos_de(guardada) == {("MANUALES", "horas_peon")}
     # Devuelve el Detalle, otra vez Con diferencia y sin Revisión vigente.
     assert (detalle["estados"], detalle["diferencia_revisada"]) == (["con_diferencia"], False)
     assert detalle["se_puede_revisar"] is True
@@ -368,6 +374,23 @@ def test_deshacer_dos_veces_da_409(db, servicio, consulta, persona, reloj):
     # El sello de la primera vez no cambia.
     [guardada] = revisiones(db)
     assert guardada.deshecha_en == DEJADA
+
+
+def test_deshacer_no_toca_una_revision_de_otro_periodo(db, servicio, consulta, persona,
+                                                       reloj):
+    con_diferencia(db, consulta)
+    # Una Revisión de la 1.ª quincena: hasta el Ticket 4 se deshace sólo la
+    # del mes entero.
+    db.add(RevisionDiferencia(cliente_id=UNO, mes=OCTUBRE, desde=OCTUBRE,
+                              hasta=date(2026, 10, 15), comentario="Quincena.",
+                              creada_en=DEJADA))
+    db.commit()
+
+    with pytest.raises(SinRevision):
+        servicio.deshacer_revision(UNO, "2026-10", persona.id)
+
+    [guardada] = revisiones(db)
+    assert guardada.deshecha_en is None
 
 
 def test_deshacer_otro_mes_no_toca_la_revision(db, servicio, consulta, persona, reloj):

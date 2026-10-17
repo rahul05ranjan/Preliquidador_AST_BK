@@ -1,7 +1,8 @@
 """Las migraciones de Facturación: la 001 creó facturacion_tarea, la 002 la borra,
 la 003 crea las tablas de Comprobantes (E2), la 004 las de la configuración y la
-Revisión de diferencia (E3) y la 005 borra los permisos guardados de las
-pantallas retiradas `pendientes` y `cruce`.
+Revisión de diferencia (E3), la 005 borra los permisos guardados de las
+pantallas retiradas `pendientes` y `cruce` y la 006 pasa la Revisión a grupos
+y le suma su período (spec de la E3a por grupo).
 
 Se leen los `.sql` como texto, sin base, como en tests/core/test_migracion_roles.py.
 Desde el 2026-10-12 la Unidad sugerida se lee del sistema de campo
@@ -26,6 +27,7 @@ M002 = CARPETA / "002_borrar_unidad_por_tarea.sql"
 M003 = CARPETA / "003_comprobantes.sql"
 M004 = CARPETA / "004_resumen.sql"
 M005 = CARPETA / "005_borrar_pendientes_y_cruce.sql"
+M006 = CARPETA / "006_revision_por_grupo.sql"
 ORDEN = RAIZ / "migrations" / "ORDEN.txt"
 
 
@@ -59,7 +61,8 @@ def _sentencias(sql: str) -> list[str]:
 #    `;` en una línea comentada quedaría sin `--` y se ejecutaría.
 
 @pytest.mark.parametrize(
-    "ruta", [M001, M002, M003, M004, M005], ids=["001", "002", "003", "004", "005"],
+    "ruta", [M001, M002, M003, M004, M005, M006],
+    ids=["001", "002", "003", "004", "005", "006"],
 )
 def test_ninguna_linea_comentada_tiene_punto_y_coma(ruta):
     malas = [
@@ -146,8 +149,8 @@ def test_la_004_y_la_005_van_en_orden():
     assert entradas.index(m003) < entradas.index(m004) < entradas.index(m005)
 
 
-# 10. Las columnas de cada CREATE TABLE de la 004 son las del modelo, con el
-#     patrón de tests/core/test_migracion_roles.py.
+# 10. Las columnas de cada CREATE TABLE de la 004, con lo que les cambia la
+#     006, son las del modelo, con el patrón de tests/core/test_migracion_roles.py.
 
 CREATE_TABLE = re.compile(
     r"CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\((.*?)\)\s*ENGINE", re.IGNORECASE | re.DOTALL
@@ -155,9 +158,9 @@ CREATE_TABLE = re.compile(
 NO_SON_COLUMNAS = {"UNIQUE", "CONSTRAINT", "PRIMARY", "KEY", "INDEX", "FOREIGN", "REFERENCES"}
 
 
-def test_columnas_de_las_tablas_de_la_004_coinciden_con_los_modelos():
+def _tablas_creadas(sql: str) -> dict[str, set]:
     tablas = {}
-    for nombre, cuerpo in CREATE_TABLE.findall(_sql(M004)):
+    for nombre, cuerpo in CREATE_TABLE.findall(sql):
         columnas = set()
         for linea in cuerpo.splitlines():
             palabras = linea.strip().split()
@@ -167,9 +170,18 @@ def test_columnas_de_las_tablas_de_la_004_coinciden_con_los_modelos():
             ):
                 columnas.add(palabras[0])
         tablas[nombre] = columnas
+    return tablas
+
+
+def test_columnas_de_las_tablas_de_la_004_coinciden_con_los_modelos():
+    tablas = _tablas_creadas(_sql(M004))
     assert set(tablas) == {
         "facturacion_configuracion", "facturacion_revision", "facturacion_revision_tarea",
     }
+    # La 006 borra la tabla por tarea y le suma el período a la Revisión.
+    assert "facturacion_revision_tarea" not in Base.metadata.tables
+    del tablas["facturacion_revision_tarea"]
+    tablas["facturacion_revision"] |= {"desde", "hasta"}
     for nombre, columnas in tablas.items():
         del_modelo = set(Base.metadata.tables[nombre].columns.keys())
         assert columnas == del_modelo, nombre
@@ -180,3 +192,74 @@ def test_columnas_de_las_tablas_de_la_004_coinciden_con_los_modelos():
 def test_las_tablas_de_la_004_usan_el_motor_y_la_collation_de_la_003():
     sufijo = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     assert _sql(M004).count(sufijo) == 3
+
+
+# 12. La 006 va con el deploy, ANTES de reiniciar el backend, como la 004: el
+#     código de esta versión lee el período y los grupos de la Revisión.
+
+def test_la_006_no_es_diferible_y_va_antes_del_reinicio():
+    sql = _sql(M006)
+    assert "-- NO DIFERIBLE" in sql
+    assert "ANTES de reiniciar el backend" in sql
+
+
+# 13. En ORDEN.txt, la 006 después de la 005 (el orden de una base nueva) y
+#     al final del archivo.
+
+def test_la_006_va_despues_de_la_005_y_al_final():
+    entradas = _entradas_de_orden()
+    m005 = "facturacion/005_borrar_pendientes_y_cruce.sql"
+    m006 = "facturacion/006_revision_por_grupo.sql"
+    assert entradas.index(m005) < entradas.index(m006)
+    assert entradas[-1] == m006
+
+
+# 14. La tabla nueva tiene las columnas del modelo, el motor y la collation de
+#     la 003, y cae con su Revisión.
+
+def test_la_006_crea_la_tabla_de_grupos_como_el_modelo():
+    sql = _sql(M006)
+    tablas = _tablas_creadas(sql)
+    assert set(tablas) == {"facturacion_revision_grupo"}
+    del_modelo = set(Base.metadata.tables["facturacion_revision_grupo"].columns.keys())
+    assert tablas["facturacion_revision_grupo"] == del_modelo
+    sentencia = next(s for s in _sentencias(sql) if "facturacion_revision_grupo (" in s)
+    assert sentencia.endswith(
+        "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci")
+    assert ("FOREIGN KEY (revision_id) REFERENCES facturacion_revision (id) "
+            "ON DELETE CASCADE") in sentencia
+
+
+# 15. La 006 borra la tabla por tarea, llena el período de las Revisiones que
+#     ya existen con su mes entero y lo deja obligatorio, y cambia el índice.
+#     Lo que depende de lo que ya hay en la base va por PREPARE, para que se
+#     pueda correr dos veces.
+
+def test_lo_que_hace_la_006():
+    sentencias = _sentencias(_sql(M006))
+    assert "DROP TABLE IF EXISTS facturacion_revision_tarea" in sentencias
+    assert ("UPDATE facturacion_revision SET desde = mes, hasta = LAST_DAY(mes) "
+            "WHERE desde IS NULL OR hasta IS NULL") in sentencias
+    assert ("ALTER TABLE facturacion_revision MODIFY COLUMN desde DATE NOT NULL, "
+            "MODIFY COLUMN hasta DATE NOT NULL") in sentencias
+    texto = " ".join(sentencias)
+    assert ("ADD COLUMN desde DATE NULL AFTER mes, "
+            "ADD COLUMN hasta DATE NULL AFTER desde") in texto
+    assert ("ADD INDEX ix_facturacion_revision_cliente_mes_periodo "
+            "(cliente_id, mes, desde, hasta)") in texto
+    assert "DROP INDEX ix_facturacion_revision_cliente_mes'" in texto
+    # El llenado va antes de dejarlo obligatorio, y la tabla nueva antes de
+    # borrar la vieja no importa: no se copian datos entre ellas.
+    llenar = next(i for i, s in enumerate(sentencias) if s.startswith("UPDATE"))
+    obligar = next(i for i, s in enumerate(sentencias) if "MODIFY COLUMN desde" in s)
+    assert llenar < obligar
+
+
+# 16. El índice nuevo del modelo es el de la 006, y el viejo ya no está.
+
+def test_el_indice_de_la_revision_es_el_del_periodo():
+    indices = {i.name: [c.name for c in i.columns]
+               for i in Base.metadata.tables["facturacion_revision"].indexes}
+    assert indices == {
+        "ix_facturacion_revision_cliente_mes_periodo": ["cliente_id", "mes", "desde", "hasta"],
+    }
