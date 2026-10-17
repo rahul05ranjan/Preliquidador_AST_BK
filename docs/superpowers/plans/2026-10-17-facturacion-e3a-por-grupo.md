@@ -44,9 +44,14 @@ modales.
    facturan por grupo; por tarea daba diferencias falsas. Revierte lo del BK #100 ("Con diferencia se
    mide por tarea"): el porqué de volver al grupo va en el cuerpo del PR del backend, que es lo que
    archiva la bitácora.
-2. **Resumen**: un encabezado por mes y Cliente con el Estado y la acción ("Con diferencia · N grupos
-   superan"), y debajo una línea por unidad (Campo, Facturado, Dif., Dif. %). Sólo cantidades, sin
-   TOTAL. Los cuadros de Alertas, Mes en curso y Antes del corte no cambian.
+2. **Resumen**: un encabezado por mes y Cliente con el Estado y la acción ("Con diferencia · N líneas
+   superan", donde N cuenta las líneas (grupo, unidad): un grupo con dos unidades que superan cuenta
+   2), y debajo una línea por unidad (Campo, Facturado, Dif., Dif. %). Sólo cantidades, sin TOTAL.
+   Orden fijo, sin ordenar por columna: el mes más nuevo primero, después el Estado más urgente y
+   después el Cliente; dentro de cada bloque, por grupo ("Sin grupo" al final) y por unidad. Los meses
+   que van en gris (Antes del corte y Mes en curso) muestran sus líneas en gris, con Dif., sin aviso.
+   Los cuadros de Alertas, Mes en curso y Antes del corte no cambian. Sale del boceto ya aprobado: el
+   Ticket 1 no lleva boceto nuevo.
 3. **Detalle**: una fila por (grupo, unidad), todas cerradas. El triángulo abre sus tareas con la
    cantidad del campo. El nombre de la tarea abre un modal con sus partes (fecha, finca, supervisor,
    cantidad y total); se cierra con Cerrar, Escape o un click afuera, y el foco vuelve a la tarea. El
@@ -98,8 +103,10 @@ modales.
 - `migrations/facturacion/006_revision_por_grupo.sql` (la última del módulo es la 005):
   - crea `facturacion_revision_grupo` (revisión con borrado en cascada, grupo y unidad) y borra
     `facturacion_revision_tarea`;
-  - suma a la Revisión su período (Desde y Hasta) y pasa la unicidad de (Cliente, mes) a (Cliente, mes,
-    Desde, Hasta); las Revisiones que ya existan quedan con el mes entero;
+  - suma a la Revisión su período (Desde y Hasta) y cambia el índice (no único) de (Cliente, mes) por
+    uno de (Cliente, mes, Desde, Hasta); las Revisiones que ya existan quedan con el mes entero. Se
+    siguen guardando todas, con quién revisó y quién deshizo: la que vale es la más reciente no
+    deshecha de ese período exacto (decisión del usuario, 2026-10-17);
   - "NO DIFERIBLE": va **antes de reiniciar** el backend, como la 004; idempotente; vuelta atrás
     comentada y sin `;`, siguiendo el precedente de la `002_borrar_unidad_por_tarea.sql`;
   - un renglón al final de `migrations/ORDEN.txt` y en el `LEEME.md` del módulo.
@@ -202,7 +209,8 @@ Decisiones que aplica: 1, 2, 5 (sólo lo de guardar)
 Criterios de aceptación:
 - [ ] Con el mes entero, el cruce da lo de hoy agrupado (test guardián).
 - [ ] Un grupo con dos unidades da dos líneas; facturado sin campo muestra la raya.
-- [ ] El encabezado dice "Con diferencia · N grupos superan" y el botón va al Detalle.
+- [ ] El encabezado dice "Con diferencia · N líneas superan" y el botón va al Detalle.
+- [ ] El orden es el fijo de la decisión 2.
 - [ ] La 006 aplicada en `testing` con respaldo y OK; una Revisión guardada por la API cubre el mes.
 - [ ] Mientras no esté el Ticket 2, el Detalle de la pantalla queda roto en el worktree (no se prueba).
 PR: hermanos de la E3a (BK y FT)
