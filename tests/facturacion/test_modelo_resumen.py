@@ -1,8 +1,9 @@
-"""El modelo del Resumen (facturacion/004), sobre SQLite en memoria.
+"""El modelo del Resumen (facturacion/004 y 006), sobre SQLite en memoria.
 
 La configuración es una sola fila (id 1) con el Umbral y el Mes de corte. Una
-Revisión de diferencia guarda, para un Cliente y un mes, las (tarea, unidad)
-que superaban cuando se dejó; borrarla arrastra sus tareas.
+Revisión de diferencia guarda, para un Cliente, un mes y su período (Desde y
+Hasta), las (grupo, unidad) que superaban cuando se dejó; borrarla arrastra
+sus grupos.
 
 SQLite no hace cumplir las FK sin un PRAGMA: lo que se prueba del borrado es la
 cascada de la relación, no la de la base.
@@ -12,10 +13,11 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.modulos.facturacion.models import Configuracion, RevisionDiferencia, RevisionTarea
+from app.modulos.facturacion.models import Configuracion, RevisionDiferencia, RevisionGrupo
 
 
 @pytest.fixture()
@@ -28,18 +30,21 @@ def fabrica():
 
 def revision(**campos):
     base = dict(
-        cliente_id=12, mes=date(2026, 9, 1), comentario="Diferencia explicada.",
+        cliente_id=12, mes=date(2026, 9, 1), desde=date(2026, 9, 1),
+        hasta=date(2026, 9, 30), comentario="Diferencia explicada.",
         creada_en=datetime(2026, 10, 14, 12, 0),
     )
     return RevisionDiferencia(**{**base, **campos})
 
 
-def test_una_revision_con_dos_tareas_se_lee_de_vuelta(fabrica):
+def test_una_revision_con_tres_grupos_se_lee_de_vuelta(fabrica):
     db = fabrica()
-    r = revision(tareas=[
-        RevisionTarea(tarea_id=7, unidad="plantas"),
-        # Una tarea sin unidad también se puede revisar.
-        RevisionTarea(tarea_id=8, unidad=None),
+    r = revision(grupos=[
+        RevisionGrupo(grupo="MANUALES", unidad="plantas"),
+        # Una línea sin unidad también se puede revisar.
+        RevisionGrupo(grupo="MANUALES", unidad=None),
+        # Sin grupo va con el grupo nulo.
+        RevisionGrupo(grupo=None, unidad="hectareas"),
     ])
     db.add(r)
     db.commit()
@@ -48,11 +53,11 @@ def test_una_revision_con_dos_tareas_se_lee_de_vuelta(fabrica):
 
     otra = fabrica()
     leida = otra.get(RevisionDiferencia, id_)
-    assert (leida.cliente_id, leida.mes, leida.comentario) == (
-        12, date(2026, 9, 1), "Diferencia explicada.",
+    assert (leida.cliente_id, leida.mes, leida.desde, leida.hasta, leida.comentario) == (
+        12, date(2026, 9, 1), date(2026, 9, 1), date(2026, 9, 30), "Diferencia explicada.",
     )
-    assert sorted((t.tarea_id, t.unidad) for t in leida.tareas) == [
-        (7, "plantas"), (8, None),
+    assert [(g.grupo, g.unidad) for g in leida.grupos] == [
+        ("MANUALES", "plantas"), ("MANUALES", None), (None, "hectareas"),
     ]
     # Vigente: nadie la deshizo.
     assert leida.deshecha_en is None
@@ -60,10 +65,10 @@ def test_una_revision_con_dos_tareas_se_lee_de_vuelta(fabrica):
     otra.close()
 
 
-def test_borrar_la_revision_borra_sus_tareas(fabrica):
+def test_borrar_la_revision_borra_sus_grupos(fabrica):
     db = fabrica()
-    r = revision(tareas=[RevisionTarea(tarea_id=7, unidad="plantas"),
-                         RevisionTarea(tarea_id=8, unidad="hectareas")])
+    r = revision(grupos=[RevisionGrupo(grupo="MANUALES", unidad="plantas"),
+                         RevisionGrupo(grupo="SANIDAD", unidad="tancadas")])
     db.add(r)
     db.commit()
 
@@ -71,7 +76,7 @@ def test_borrar_la_revision_borra_sus_tareas(fabrica):
     db.commit()
 
     assert db.query(RevisionDiferencia).count() == 0
-    assert db.query(RevisionTarea).count() == 0
+    assert db.query(RevisionGrupo).count() == 0
     db.close()
 
 

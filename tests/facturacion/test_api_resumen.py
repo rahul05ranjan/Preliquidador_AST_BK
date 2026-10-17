@@ -42,10 +42,20 @@ D = Decimal
 # Con los tipos del servicio de verdad: Decimal, date y datetime. Cada dict
 # trae una clave de más ("sobra"), que el schema tiene que dejar afuera.
 
+LINEA = {
+    "grupo": "MANUALES", "unidad": "horas_peon", "campo": D("120.50"),
+    "facturado": D("130"), "diferencia": D("9.50"), "diferencia_pct": D("7.88"),
+    "supera": True, "sobra": "no va",
+}
+# Facturado sin campo: sin unidad de medida del campo, sin diferencia ni %.
+LINEA_SIN_CAMPO = {
+    "grupo": "Sin grupo", "unidad": "hectareas", "campo": D("0"),
+    "facturado": D("4.25"), "diferencia": D("4.25"), "diferencia_pct": None,
+    "supera": True,
+}
 FILA = {
     "cliente_id": 12, "cliente_nombre": "CLIENTE UNO", "mes": date(2026, 10, 1),
-    "horas_peon": D("120.50"), "horas_tractor": D("8.00"), "tancadas": D("0"),
-    "plantas": D("0"), "hectareas": D("4.25"), "facturado_neto": D("-1500.00"),
+    "grupos": [LINEA, LINEA_SIN_CAMPO], "lineas_superan": 2,
     "estados": ["con_diferencia", "falta_comprobante"],
     "diferencia_revisada": False,
     "comprobantes_sin_adjunto": [{"id": 5, "tipo": "factura", "numero": "A 0001"}],
@@ -90,8 +100,7 @@ DETALLE = {
     "revision": {"id": 7, "comentario": "Explicada.",
                  "creada_en": datetime(2026, 11, 10, 15, 0),
                  "creada_por_nombre": "PERSONA DE PRUEBA",
-                 "tareas": [{"tarea_id": 101, "tarea_nombre": "PODA",
-                             "unidad": "horas_peon"}]},
+                 "grupos": [{"grupo": "MANUALES", "unidad": "horas_peon"}]},
     "sobra": "no va",
 }
 CONFIGURACION = {
@@ -103,9 +112,10 @@ CONFIGURACION = {
 # Las claves de cada respuesta, copiadas de la sección 3.2 del plan.
 CLAVES_RESUMEN = {"umbral_pct", "mes_corte", "mes_en_curso", "leido_en", "filas",
                   "tareas_sin_unidad", "actualizado_en", "actualizado_por_nombre"}
-CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "horas_peon", "horas_tractor",
-               "tancadas", "plantas", "hectareas", "facturado_neto", "estados",
-               "diferencia_revisada", "comprobantes_sin_adjunto"}
+CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "grupos", "lineas_superan",
+               "estados", "diferencia_revisada", "comprobantes_sin_adjunto"}
+CLAVES_LINEA = {"grupo", "unidad", "campo", "facturado", "diferencia", "diferencia_pct",
+                "supera"}
 CLAVES_DETALLE = {"cliente_id", "cliente_nombre", "mes", "umbral_pct", "mes_corte",
                   "leido_en", "estados", "diferencia_revisada", "se_puede_revisar",
                   "comprobantes", "grupos", "total", "revision"}
@@ -114,7 +124,7 @@ CLAVES_TAREA = {"tarea_id", "tarea_nombre", "unidad", "sin_unidad_sugerida",
                 "diferencia_pct", "supera", "precio", "partes"}
 CLAVES_TOTAL = {"campo_pesos", "facturado_pesos", "diferencia_pesos",
                 "diferencia_pct", "tareas_sin_precio"}
-CLAVES_REVISION = {"id", "comentario", "creada_en", "creada_por_nombre", "tareas"}
+CLAVES_REVISION = {"id", "comentario", "creada_en", "creada_por_nombre", "grupos"}
 CLAVES_CONFIGURACION = {"umbral_pct", "mes_corte", "actualizado_en",
                         "actualizado_por_nombre"}
 
@@ -233,9 +243,15 @@ def test_el_resumen_sale_con_la_forma_del_contrato():
     fila = cuerpo["filas"][0]
     assert set(fila) == CLAVES_FILA
     assert fila["mes"] == "2026-10"
-    # Los decimales como texto; el neto, con signo.
-    assert fila["horas_peon"] == "120.50"
-    assert fila["facturado_neto"] == "-1500.00"
+    # Las líneas (grupo, unidad), con los decimales como texto y sin pesos.
+    assert fila["lineas_superan"] == 2
+    assert [set(l) for l in fila["grupos"]] == [CLAVES_LINEA, CLAVES_LINEA]
+    assert fila["grupos"][0] == {
+        "grupo": "MANUALES", "unidad": "horas_peon", "campo": "120.50",
+        "facturado": "130", "diferencia": "9.50", "diferencia_pct": "7.88",
+        "supera": True}
+    # Facturado sin campo: el % en raya (null).
+    assert fila["grupos"][1]["diferencia_pct"] is None
     assert fila["estados"] == ["con_diferencia", "falta_comprobante"]
     assert fila["comprobantes_sin_adjunto"] == [{"id": 5, "tipo": "factura", "numero": "A 0001"}]
     assert servicio.llamadas == [("resumen", "2026-09", "2026-10", True)]
@@ -276,8 +292,7 @@ def test_el_detalle_sale_con_la_forma_del_contrato():
     assert cuerpo["total"]["tareas_sin_precio"] == 1
     assert set(cuerpo["revision"]) == CLAVES_REVISION
     assert cuerpo["revision"]["creada_en"] == "2026-11-10T15:00:00"
-    assert cuerpo["revision"]["tareas"] == [
-        {"tarea_id": 101, "tarea_nombre": "PODA", "unidad": "horas_peon"}]
+    assert cuerpo["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
     assert servicio.llamadas == [("detalle", 12, "2026-10", True)]
 
 
@@ -474,7 +489,11 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     assert set(fila) == CLAVES_FILA
     assert (fila["cliente_id"], fila["mes"], fila["estados"]) == (
         detalle_a8.UNO, "2026-10", ["con_diferencia"])
-    assert fila["horas_peon"] == "100"
+    assert [(l["grupo"], l["unidad"], l["campo"], l["facturado"], l["supera"])
+            for l in fila["grupos"]] == [
+        ("MANUALES", "horas_peon", "100", "150.00", True),
+        ("MANUALES", "plantas", "300", "300.00", False)]
+    assert fila["lineas_superan"] == 1
 
     ruta = f"{F}/resumen/{detalle_a8.UNO}/2026-10"
     r = c.get(ruta)
@@ -501,6 +520,11 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     assert set(revisado["revision"]) == CLAVES_REVISION
     assert revisado["revision"]["comentario"] == "El campo cargó de menos."
     assert revisado["revision"]["creada_por_nombre"] == "PERSONA DE PRUEBA"
+    assert revisado["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
+    # La Revisión guardada por la API cubre el mes entero: el Resumen del mes
+    # la toma.
+    fila = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10").json()["filas"][0]
+    assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
 
     r = c.post(f"{ruta}/revision", json={"comentario": "Otra vez."})
     assert r.status_code == 409

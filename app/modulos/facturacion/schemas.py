@@ -158,20 +158,35 @@ class ComprobanteSinAdjunto(BaseModel):
     numero: str | None = None
 
 
+class LineaResumen(BaseModel):
+    """Una línea de una fila del Resumen: un grupo de tareas en una unidad,
+    en cantidades (sin pesos)."""
+    # "Sin grupo" para las tareas sin grupo.
+    grupo: str
+    # None si las tareas del grupo no tienen Unidad sugerida.
+    unidad: str | None = None
+    # None si la línea no tiene unidad.
+    campo: Decimal | None = None
+    # Neto: las Notas de crédito restan.
+    facturado: Decimal
+    diferencia: Decimal | None = None
+    # None ("—") si el campo es 0 o no hay.
+    diferencia_pct: Decimal | None = None
+    # Sólo en los meses que se controlan; en los meses en gris, False.
+    supera: bool
+
+
 class FilaResumen(BaseModel):
     """Una fila del Resumen: un Cliente en un mes."""
     cliente_id: int
     # None sólo si el Cliente no está en el maestro ni tiene Comprobantes.
     cliente_nombre: str | None = None
     mes: Mes
-    # Lo trabajado en el campo, por unidad.
-    horas_peon: Decimal
-    horas_tractor: Decimal
-    tancadas: Decimal
-    plantas: Decimal
-    hectareas: Decimal
-    # Con signo: las Notas de crédito restan.
-    facturado_neto: Decimal
+    # Las líneas (grupo, unidad): por grupo, "Sin grupo" al final, y por
+    # unidad.
+    grupos: list[LineaResumen]
+    # Cuántas líneas superan el Umbral (no cuántos grupos).
+    lineas_superan: int
     # Ordenados por urgencia: el primero es el que se muestra.
     estados: list[EstadoMes]
     diferencia_revisada: bool
@@ -258,10 +273,10 @@ class TotalDetalle(BaseModel):
     tareas_sin_precio: int
 
 
-class TareaRevisada(BaseModel):
-    """Una (tarea, unidad) que superaba cuando se dejó la Revisión."""
-    tarea_id: int
-    tarea_nombre: str | None = None
+class GrupoRevisado(BaseModel):
+    """Una línea (grupo, unidad) que superaba cuando se dejó la Revisión."""
+    # "Sin grupo" para las tareas sin grupo.
+    grupo: str
     unidad: str | None = None
 
 
@@ -272,7 +287,7 @@ class RevisionSalida(BaseModel):
     creada_en: datetime
     # None si la persona ya no existe.
     creada_por_nombre: str | None = None
-    tareas: list[TareaRevisada] = []
+    grupos: list[GrupoRevisado] = []
 
 
 class DetalleResumen(BaseModel):

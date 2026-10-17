@@ -1,4 +1,5 @@
-"""El motor del Cruce (plan de la E3, decisión 6, paso A5).
+"""El motor del Cruce (plan de la E3, decisión 6, paso A5; spec de la E3a
+por grupo, decisión 1).
 
 `cruce.py` es puro: recibe lo trabajado (las filas del campo, crudas), las
 Líneas de lo facturado y el maestro de tareas, y devuelve el Cruce de cada
@@ -102,6 +103,13 @@ def fila(cruce, tarea_id, unidad="*"):
     encontradas = [f for f in cruce.filas
                    if f.tarea_id == tarea_id and (unidad == "*" or f.unidad == unidad)]
     assert len(encontradas) == 1, encontradas
+    return encontradas[0]
+
+
+def grupo(cruce, nombre, unidad):
+    """La línea (grupo, unidad) del Cruce; `nombre` None es Sin grupo."""
+    encontradas = [g for g in cruce.grupos if g.grupo == nombre and g.unidad == unidad]
+    assert len(encontradas) == 1, cruce.grupos
     return encontradas[0]
 
 
@@ -231,7 +239,7 @@ def test_una_nota_de_credito_resta_cantidad_e_importe():
 ])
 def test_el_umbral_es_estricto(facturado, supera):
     cruce = mes([trabajo(PODA, jornal="100")], [linea(PODA, "horas_peon", facturado)])
-    assert fila(cruce, PODA).supera is supera
+    assert grupo(cruce, "MANUALES", "horas_peon").supera is supera
 
 
 def test_diferencia_y_porcentaje():
@@ -239,16 +247,19 @@ def test_diferencia_y_porcentaje():
     f = fila(cruce, PODA)
     assert f.diferencia == D("20")
     assert f.diferencia_pct == D("25.00")
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.diferencia == D("20")
+    assert g.diferencia_pct == D("25.00")
 
 
-# ─── La tabla "Supera" ──────────────────────────────────────────────────────
+# ─── La tabla "Supera", por (grupo, unidad) ─────────────────────────────────
 
 def test_con_partes_y_campo_cero_sin_facturado_supera():
     cruce = mes([trabajo(PODA, jornal="0", maquina="5")])
-    f = fila(cruce, PODA)
-    assert f.campo == D("0")
-    assert f.diferencia_pct is None
-    assert f.supera is True
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.campo == D("0")
+    assert g.diferencia_pct is None
+    assert g.supera is True
 
 
 def test_la_tarea_sin_unidad_no_tiene_campo_supera_y_va_al_aviso():
@@ -259,7 +270,10 @@ def test_la_tarea_sin_unidad_no_tiene_campo_supera_y_va_al_aviso():
     assert f.sin_unidad_sugerida is True
     assert f.campo is None
     assert f.diferencia is None and f.diferencia_pct is None
-    assert f.supera is True
+    g = grupo(cruce, "MANUALES", None)
+    assert g.campo is None
+    assert g.diferencia is None and g.diferencia_pct is None
+    assert g.supera is True
     assert tareas_sin_unidad([cruce]) == [
         {"tarea_id": SIN_UNIDAD, "nombre": "ATADO", "clientes": 1}]
 
@@ -267,40 +281,106 @@ def test_la_tarea_sin_unidad_no_tiene_campo_supera_y_va_al_aviso():
 def test_con_campo_cero_y_algo_facturado_supera():
     cruce = mes([trabajo(PODA, jornal="0", maquina="3")],
                 [linea(PODA, "horas_peon", "4")])
-    assert fila(cruce, PODA).supera is True
+    assert grupo(cruce, "MANUALES", "horas_peon").supera is True
 
 
 def test_facturado_sin_partes_supera():
     cruce = mes([], [linea(PODA, "horas_peon", "4")])
-    f = fila(cruce, PODA)
-    assert f.partes == 0
-    assert f.campo == D("0")
-    assert f.supera is True
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.partes == 0
+    assert g.campo == D("0")
+    assert g.supera is True
+
+
+def test_facturado_sin_campo_supera_con_la_raya():
+    # Una pulverización facturada por hectárea: el campo la mide en
+    # tancadas, así que en hectáreas no tiene nada (caso borde 4 de la spec).
+    cruce = mes([trabajo(PULVERIZACION, tancadas="12")],
+                [linea(PULVERIZACION, "hectareas", "30")])
+    g = grupo(cruce, "SANIDAD", "hectareas")
+    assert g.campo == D("0")
+    assert g.facturado == D("30")
+    assert g.diferencia == D("30")
+    assert g.diferencia_pct is None
+    assert g.supera is True
+    assert cruce.estados == ["con_diferencia"]
 
 
 def test_sin_partes_y_facturado_cero_no_hay_fila():
     cruce = mes([], [linea(PODA, "horas_peon", "4", "400"),
                      linea(PODA, "horas_peon", "4", "400", tipo="nota_credito")])
     assert cruce.filas == []
+    assert cruce.grupos == []
 
 
-# ─── Columnas del Resumen ───────────────────────────────────────────────────
+# ─── Las líneas por (grupo, unidad) ─────────────────────────────────────────
 
-def test_las_columnas_suman_por_unidad_y_la_tarea_sin_unidad_no_suma():
-    cruce = mes([trabajo(PODA, jornal="10"),
+def test_con_el_mes_entero_da_lo_de_hoy_agrupado():
+    # Guardián del cambio: las filas por tarea siguen iguales, y cada línea
+    # (grupo, unidad) es la suma de las suyas.
+    cruce = mes([trabajo(PODA, jornal="10", partes=2),
                  trabajo(TRACTOR, jornal="3", maquina="6"),
                  trabajo(RALEO, jornal="8", unidades="500"),
                  trabajo(DESMALEZADO, unidades="2.5"),
                  trabajo(PULVERIZACION, tancadas="12"),
                  trabajo(SIN_UNIDAD, jornal="99")],
-                [linea(RALEO, "horas_peon", "8"), linea(RALEO, "plantas", "500")])
-    assert cruce.columnas == {
-        "horas_peon": D("18"),   # PODA 10 + RALEO en horas 8
-        "horas_tractor": D("6"),
-        "plantas": D("500"),
-        "hectareas": D("2.5"),
-        "tancadas": D("12"),
-    }
+                [linea(PODA, "horas_peon", "11"),
+                 linea(RALEO, "horas_peon", "8"), linea(RALEO, "plantas", "450"),
+                 linea(TRACTOR, "horas_tractor", "6"),
+                 linea(PULVERIZACION, "tancadas", "12", tipo="nota_credito"),
+                 linea(FUERA_DEL_MAESTRO, "horas_peon", "2")])
+    assert [(f.tarea_id, f.unidad, f.campo, f.facturado) for f in cruce.filas] == [
+        (SIN_UNIDAD, None, None, D("0")),
+        (FUERA_DEL_MAESTRO, "horas_peon", D("0"), D("2")),
+        (DESMALEZADO, "hectareas", D("2.5"), D("0")),
+        (PODA, "horas_peon", D("10"), D("11")),
+        (PULVERIZACION, "tancadas", D("12"), D("-12")),
+        (RALEO, "horas_peon", D("8"), D("8")),
+        (RALEO, "plantas", D("500"), D("450")),
+        (TRACTOR, "horas_tractor", D("6"), D("6")),
+    ]
+    assert [(g.grupo, g.unidad, g.partes, g.campo, g.facturado) for g in cruce.grupos] == [
+        ("MANUALES", "horas_peon", 3, D("18"), D("19")),
+        ("MANUALES", "plantas", 1, D("500"), D("450")),
+        ("MANUALES", None, 1, None, D("0")),
+        ("MAQUINARIA", "horas_tractor", 1, D("6"), D("6")),
+        ("SANIDAD", "tancadas", 1, D("12"), D("-12")),
+        (None, "horas_peon", 0, D("0"), D("2")),
+        (None, "hectareas", 1, D("2.5"), D("0")),
+    ]
+    for g in cruce.grupos:
+        tareas = [(f.tarea_id, f.unidad) for f in g.tareas]
+        assert tareas == [(f.tarea_id, f.unidad) for f in cruce.filas
+                          if (f.grupo_tarea, f.unidad) == (g.grupo, g.unidad)]
+
+
+def test_las_tareas_de_un_grupo_se_compensan():
+    # PODA de más y RALEO de menos, en la misma unidad: el grupo cierra.
+    cruce = mes([trabajo(PODA, jornal="10"), trabajo(RALEO, jornal="10")],
+                [linea(PODA, "horas_peon", "15"), linea(RALEO, "horas_peon", "5")])
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert (g.campo, g.facturado, g.diferencia) == (D("20"), D("20"), D("0"))
+    assert g.supera is False
+    assert cruce.superan == set()
+    assert cruce.estados == ["facturada"]
+
+
+def test_un_grupo_con_dos_unidades_da_dos_lineas():
+    cruce = mes([trabajo(PODA, jornal="10"), trabajo(RALEO, unidades="500")],
+                [linea(PODA, "horas_peon", "20"), linea(RALEO, "plantas", "800")])
+    assert [(g.grupo, g.unidad) for g in cruce.grupos] == [
+        ("MANUALES", "horas_peon"), ("MANUALES", "plantas")]
+    assert cruce.superan == {("MANUALES", "horas_peon"), ("MANUALES", "plantas")}
+
+
+def test_las_lineas_van_por_grupo_con_sin_grupo_al_final_y_por_unidad():
+    cruce = mes([trabajo(DESMALEZADO, unidades="2"), trabajo(PULVERIZACION, tancadas="3"),
+                 trabajo(TRACTOR, maquina="4"), trabajo(RALEO, unidades="5"),
+                 trabajo(PODA, jornal="6")])
+    assert [(g.grupo, g.unidad) for g in cruce.grupos] == [
+        ("MANUALES", "horas_peon"), ("MANUALES", "plantas"),
+        ("MAQUINARIA", "horas_tractor"), ("SANIDAD", "tancadas"),
+        (None, "hectareas")]
 
 
 # ─── Estados del mes ────────────────────────────────────────────────────────
@@ -314,14 +394,17 @@ def test_antes_del_corte_va_solo_y_no_supera():
     cruce = mes([trabajo(PODA, jornal="10")], [linea(PODA, "horas_peon", "50", adjuntos=0)],
                 el_mes=date(2026, 7, 1))
     assert cruce.estados == ["antes_del_corte"]
-    assert fila(cruce, PODA).supera is False
+    assert grupo(cruce, "MANUALES", "horas_peon").supera is False
+    assert cruce.superan == set()
     assert cruce.diferencia_revisada is False
 
 
 def test_mes_en_curso_solo_y_no_supera():
     cruce = mes([trabajo(PODA, jornal="10")], el_mes=OCTUBRE)
     assert cruce.estados == ["mes_en_curso"]
-    assert fila(cruce, PODA).supera is False
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.supera is False
+    assert g.diferencia == D("-10")
 
 
 def test_mes_en_curso_con_falta_comprobante():
@@ -382,29 +465,29 @@ def test_un_comprobante_que_solo_trae_lineas_que_no_cuentan_no_falta():
 
 def test_la_revision_que_cubre_deja_facturada_y_revisada():
     cruce = mes([trabajo(PODA, jornal="10")], [linea(PODA, "horas_peon", "20")],
-                revisadas={(PODA, "horas_peon")})
+                revisadas={("MANUALES", "horas_peon")})
     assert cruce.estados == ["facturada"]
     assert cruce.diferencia_revisada is True
-    assert fila(cruce, PODA).supera is True
+    assert grupo(cruce, "MANUALES", "horas_peon").supera is True
 
 
-def test_una_tarea_nueva_que_supera_vuelve_a_con_diferencia():
+def test_un_grupo_nuevo_que_supera_vuelve_a_con_diferencia():
     cruce = mes([trabajo(PODA, jornal="10"), trabajo(TRACTOR, maquina="5")],
                 [linea(PODA, "horas_peon", "20"), linea(TRACTOR, "horas_tractor", "9")],
-                revisadas={(PODA, "horas_peon")})
+                revisadas={("MANUALES", "horas_peon")})
     assert cruce.estados == ["con_diferencia"]
     assert cruce.diferencia_revisada is False
 
 
-def test_la_revision_es_por_tarea_y_unidad():
+def test_la_revision_es_por_grupo_y_unidad():
     cruce = mes([trabajo(PODA, jornal="10")], [linea(PODA, "horas_peon", "20")],
-                revisadas={(PODA, "plantas")})
+                revisadas={("MANUALES", "plantas")})
     assert cruce.estados == ["con_diferencia"]
 
 
 def test_si_ninguna_supera_queda_facturada_sin_nota_aunque_haya_revision():
     cruce = mes([trabajo(PODA, jornal="10")], [linea(PODA, "horas_peon", "10")],
-                revisadas={(PODA, "horas_peon")})
+                revisadas={("MANUALES", "horas_peon")})
     assert cruce.estados == ["facturada"]
     assert cruce.diferencia_revisada is False
 
@@ -412,15 +495,22 @@ def test_si_ninguna_supera_queda_facturada_sin_nota_aunque_haya_revision():
 def test_la_tarea_sin_unidad_se_revisa_con_unidad_nula():
     cruce = mes([trabajo(SIN_UNIDAD, jornal="10"), trabajo(PODA, jornal="10")],
                 [linea(PODA, "horas_peon", "10")],
-                revisadas={(SIN_UNIDAD, None)})
+                revisadas={("MANUALES", None)})
     assert cruce.estados == ["facturada"]
+    assert cruce.diferencia_revisada is True
+
+
+def test_sin_grupo_se_revisa_con_grupo_nulo():
+    cruce = mes([trabajo(DESMALEZADO, unidades="2")], [linea(DESMALEZADO, "hectareas", "3")],
+                revisadas={(None, "hectareas")})
+    assert cruce.superan == {(None, "hectareas")}
     assert cruce.diferencia_revisada is True
 
 
 def test_las_que_superan():
     cruce = mes([trabajo(PODA, jornal="10"), trabajo(TRACTOR, maquina="5")],
                 [linea(PODA, "horas_peon", "20"), linea(TRACTOR, "horas_tractor", "5")])
-    assert cruce.superan == {(PODA, "horas_peon")}
+    assert cruce.superan == {("MANUALES", "horas_peon")}
 
 
 # ─── cruzar(): todos los Clientes y meses del Resumen ───────────────────────
@@ -436,7 +526,7 @@ def test_cruzar_arma_un_cruce_por_cliente_y_mes_sin_tocar_lo_recibido():
     antes = (copy.deepcopy(trabajado), copy.deepcopy(lineas))
     cruces = cruzar(trabajado, lineas, TAREAS, umbral_pct=UMBRAL, mes_corte=MES_CORTE,
                     mes_en_curso=MES_EN_CURSO,
-                    revisiones={(CLIENTE, SEPTIEMBRE): {(SIN_UNIDAD, None)}})
+                    revisiones={(CLIENTE, SEPTIEMBRE): {("MANUALES", None)}})
     assert [(c.cliente_id, c.mes) for c in cruces] == [
         (CLIENTE, AGOSTO), (otro, AGOSTO), (CLIENTE, SEPTIEMBRE), (otro, SEPTIEMBRE)]
     por_clave = {(c.cliente_id, c.mes): c for c in cruces}

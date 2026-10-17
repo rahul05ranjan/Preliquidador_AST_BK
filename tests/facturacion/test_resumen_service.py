@@ -4,8 +4,10 @@ SQLite en memoria y con una consulta del campo falsa.
 Lo que se cuida acá: el Umbral y el Mes de corte salen de la base o, sin
 fila, de los valores iniciales; el rango se valida antes de leer el campo; lo
 facturado se lee fresco de la base propia y entra en el Cruce como el motor
-manda; un Cliente sin nada que cruzar no aparece; y las filas salen en el
-orden del contrato (mes descendente, urgencia, Cliente).
+manda; cada fila trae sus líneas (grupo, unidad) y cuántas superan; una
+Revisión cubre sólo su período exacto; un Cliente sin nada que cruzar no
+aparece; y las filas salen en el orden del contrato (mes descendente,
+urgencia, Cliente).
 
 Hoy es el 10 de noviembre de 2026: noviembre es el mes en curso y, con el
 corte inicial en octubre, octubre se controla y septiembre queda Antes del
@@ -23,7 +25,7 @@ from app.core.models import Usuario
 from app.modulos.facturacion import config, fechas
 from app.modulos.facturacion.models import (
     Adjunto, Comprobante, Configuracion, LineaComprobante, RevisionDiferencia,
-    RevisionTarea,
+    RevisionGrupo,
 )
 from app.modulos.facturacion.services import consulta_externa, resumen_service
 from app.modulos.facturacion.services.resumen_service import (
@@ -44,6 +46,7 @@ RALEO = 103         # plantas
 ATADO = 106         # facturable, sin Unidad sugerida
 INTERNA = 107       # No facturable
 CARGA_BINS = 108    # sugerida de cosecha
+TAREA_VIEJA = 999   # no está en el maestro: Sin grupo
 
 UNO, DOS, TRES, CUATRO, CINCO, NUEVE = 1, 2, 3, 4, 5, 9
 
@@ -177,6 +180,19 @@ def comprobante(db, cliente_id, lineas, *, tipo="factura", es_historico=False,
 
 def por_cliente(respuesta, mes):
     return {f["cliente_id"]: f for f in respuesta["filas"] if f["mes"] == mes}
+
+
+def linea(grupo, unidad, campo, facturado, *, supera=False):
+    """Una línea (grupo, unidad) de una fila del Resumen, con la diferencia y
+    su % calculados como el motor (None si no hay campo o es 0)."""
+    campo = None if campo is None else D(campo)
+    facturado = D(facturado)
+    diferencia = None if campo is None else facturado - campo
+    return {"grupo": grupo, "unidad": unidad, "campo": campo, "facturado": facturado,
+            "diferencia": diferencia,
+            "diferencia_pct": (None if not campo else
+                               (diferencia * 100 / campo).quantize(D("0.01"))),
+            "supera": supera}
 
 
 # ─── Configuración ──────────────────────────────────────────────────────────
@@ -326,17 +342,23 @@ def test_pendiente_facturada_y_con_diferencia(db, servicio, consulta):
     assert filas[UNO]["estados"] == ["pendiente_de_facturar"]
     assert filas[DOS]["estados"] == ["facturada"]
     assert filas[CUATRO]["estados"] == ["con_diferencia"]
+    # Cada fila trae sus líneas (grupo, unidad), en cantidades y sin pesos.
     assert filas[DOS] == {
         "cliente_id": DOS, "cliente_nombre": "CLIENTE DOS", "mes": OCTUBRE,
-        "horas_peon": D("100"), "horas_tractor": D("0"), "tancadas": D("0"),
-        "plantas": D("0"), "hectareas": D("0"), "facturado_neto": D("5000"),
+        "grupos": [linea("MANUALES", "horas_peon", "100", "100")],
+        "lineas_superan": 0,
         "estados": ["facturada"], "diferencia_revisada": False,
         "comprobantes_sin_adjunto": [],
     }
-    assert filas[UNO]["facturado_neto"] == D("0")
+    assert filas[UNO]["grupos"] == [
+        linea("MANUALES", "horas_peon", "100", "0", supera=True)]
+    assert filas[UNO]["lineas_superan"] == 1
+    assert filas[CUATRO]["grupos"] == [
+        linea("MANUALES", "horas_peon", "100", "150", supera=True)]
+    assert filas[CUATRO]["grupos"][0]["diferencia_pct"] == D("50.00")
 
 
-def test_una_nota_de_credito_resta_en_el_neto(db, servicio, consulta):
+def test_una_nota_de_credito_resta_en_lo_facturado(db, servicio, consulta):
     consulta.trabajo(UNO, PODA, OCTUBRE, jornal="80")
     comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "100", "5000")],
                 adjuntos=1)
@@ -345,7 +367,8 @@ def test_una_nota_de_credito_resta_en_el_neto(db, servicio, consulta):
 
     fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
 
-    assert fila["facturado_neto"] == D("4000")
+    # 100 - 20 = 80 horas facturadas, lo trabajado.
+    assert fila["grupos"] == [linea("MANUALES", "horas_peon", "80", "80")]
     assert fila["estados"] == ["facturada"]
 
 
@@ -357,8 +380,10 @@ def test_antes_del_corte_muestra_sus_numeros(db, servicio, consulta):
     fila = por_cliente(servicio.resumen("2026-09", "2026-09"), SEPTIEMBRE)[UNO]
 
     assert fila["estados"] == ["antes_del_corte"]
-    assert (fila["horas_peon"], fila["plantas"]) == (D("40"), D("300"))
-    assert fila["facturado_neto"] == D("500")
+    # Con sus números y la diferencia, pero sin aviso: no se controla.
+    assert fila["grupos"] == [linea("MANUALES", "horas_peon", "40", "10"),
+                              linea("MANUALES", "plantas", "300", "0")]
+    assert fila["lineas_superan"] == 0
     assert fila["diferencia_revisada"] is False
 
 
@@ -370,7 +395,8 @@ def test_mes_en_curso(db, servicio, consulta):
     filas = por_cliente(servicio.resumen("2026-11", "2026-11"), NOVIEMBRE)
 
     assert filas[UNO]["estados"] == ["mes_en_curso"]
-    assert filas[UNO]["plantas"] == D("300")
+    assert filas[UNO]["grupos"] == [linea("MANUALES", "plantas", "300", "0")]
+    assert filas[UNO]["lineas_superan"] == 0
     # El mes en curso no se controla, pero un Comprobante sin Adjunto se avisa.
     assert filas[DOS]["estados"] == ["falta_comprobante", "mes_en_curso"]
 
@@ -399,7 +425,7 @@ def test_un_pendiente_de_facturar_no_factura(db, servicio, consulta):
     fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
 
     assert fila["estados"] == ["pendiente_de_facturar"]
-    assert fila["facturado_neto"] == D("0")
+    assert fila["grupos"] == [linea("MANUALES", "horas_peon", "100", "0", supera=True)]
 
 
 def test_lo_facturado_fuera_del_rango_no_cuenta(db, servicio, consulta):
@@ -412,7 +438,7 @@ def test_lo_facturado_fuera_del_rango_no_cuenta(db, servicio, consulta):
     respuesta = servicio.resumen("2026-10", "2026-10")
 
     assert [f["mes"] for f in respuesta["filas"]] == [OCTUBRE]
-    assert respuesta["filas"][0]["facturado_neto"] == D("5000")
+    assert respuesta["filas"][0]["grupos"] == [linea("MANUALES", "horas_peon", "100", "100")]
     assert respuesta["filas"][0]["estados"] == ["facturada"]
 
 
@@ -439,7 +465,9 @@ def test_un_cliente_con_comprobantes_y_sin_trabajo_aparece(db, servicio):
 
     fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[DOS]
 
-    assert fila["facturado_neto"] == D("5000")
+    # Facturado sin campo: supera, con el % en raya.
+    assert fila["grupos"] == [linea("MANUALES", "horas_peon", "0", "100", supera=True)]
+    assert fila["grupos"][0]["diferencia_pct"] is None
     assert fila["estados"] == ["con_diferencia"]
 
 
@@ -454,14 +482,59 @@ def test_el_nombre_sale_del_maestro_o_de_la_copia_del_comprobante(db, servicio, 
     assert filas[NUEVE]["cliente_nombre"] == "CLIENTE NUEVE"
 
 
+# ─── Líneas por grupo ───────────────────────────────────────────────────────
+
+def test_las_lineas_van_por_grupo_y_unidad_y_se_cuentan_las_que_superan(db, servicio,
+                                                                        consulta):
+    # MANUALES en horas de peón: PODA facturada de más. MANUALES en plantas:
+    # RALEO sin facturar. Sin grupo: una tarea que no está en el maestro,
+    # facturada sin campo. Las tres superan.
+    consulta.trabajo(UNO, PODA, OCTUBRE, jornal="100")
+    consulta.trabajo(UNO, RALEO, OCTUBRE, unidades="300")
+    # No facturable: no da línea.
+    consulta.trabajo(UNO, INTERNA, OCTUBRE, jornal="8")
+    comprobante(db, UNO, [(TAREA_VIEJA, "horas_peon", date(2026, 10, 1), "5", "250"),
+                          (PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
+                adjuntos=1)
+
+    fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
+
+    # Por grupo, con Sin grupo al final, y por unidad.
+    assert fila["grupos"] == [
+        linea("MANUALES", "horas_peon", "100", "150", supera=True),
+        linea("MANUALES", "plantas", "300", "0", supera=True),
+        linea("Sin grupo", "horas_peon", "0", "5", supera=True),
+    ]
+    # Cuenta líneas, no grupos: MANUALES supera en dos unidades y cuenta 2.
+    assert fila["lineas_superan"] == 3
+    assert fila["estados"] == ["con_diferencia"]
+
+
+def test_las_tareas_de_un_grupo_se_compensan(db, servicio, consulta):
+    # PODA facturada de menos y ATADO (sin Unidad sugerida, facturado en horas
+    # de peón) de más: por tarea las dos superarían; el grupo cierra.
+    consulta.trabajo(UNO, PODA, OCTUBRE, jornal="100")
+    consulta.trabajo(UNO, ATADO, OCTUBRE, jornal="50")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "50", "2500"),
+                          (ATADO, "horas_peon", date(2026, 10, 1), "100", "5000")],
+                adjuntos=1)
+
+    fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
+
+    assert fila["grupos"] == [linea("MANUALES", "horas_peon", "150", "150")]
+    assert (fila["lineas_superan"], fila["estados"]) == (0, ["facturada"])
+
+
 # ─── Revisiones ─────────────────────────────────────────────────────────────
 
-def revision(db, cliente_id, tareas, *, creada_en, deshecha=False):
+def revision(db, cliente_id, grupos, *, creada_en, deshecha=False,
+             desde=OCTUBRE, hasta=date(2026, 10, 31)):
+    """Una Revisión de octubre; sin desde ni hasta, del mes entero."""
     db.add(RevisionDiferencia(
-        cliente_id=cliente_id, mes=OCTUBRE, comentario="Explicada.",
-        creada_en=creada_en,
+        cliente_id=cliente_id, mes=OCTUBRE, desde=desde, hasta=hasta,
+        comentario="Explicada.", creada_en=creada_en,
         deshecha_en=datetime(2026, 11, 9) if deshecha else None,
-        tareas=[RevisionTarea(tarea_id=t, unidad=u) for t, u in tareas]))
+        grupos=[RevisionGrupo(grupo=g, unidad=u) for g, u in grupos]))
     db.commit()
 
 
@@ -471,11 +544,11 @@ def test_la_revision_vigente_cubre_la_diferencia(db, servicio, consulta):
         comprobante(db, cliente, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
                     adjuntos=1)
     # UNO: la vigente es la vieja, que cubre; la nueva se deshizo.
-    revision(db, UNO, [(PODA, "horas_peon")], creada_en=datetime(2026, 11, 1))
+    revision(db, UNO, [("MANUALES", "horas_peon")], creada_en=datetime(2026, 11, 1))
     revision(db, UNO, [], creada_en=datetime(2026, 11, 5), deshecha=True)
     # DOS: la vieja cubría, pero la vigente es la nueva, que no.
-    revision(db, DOS, [(PODA, "horas_peon")], creada_en=datetime(2026, 11, 1))
-    revision(db, DOS, [(RALEO, "plantas")], creada_en=datetime(2026, 11, 5))
+    revision(db, DOS, [("MANUALES", "horas_peon")], creada_en=datetime(2026, 11, 1))
+    revision(db, DOS, [("MANUALES", "plantas")], creada_en=datetime(2026, 11, 5))
 
     filas = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)
 
@@ -483,6 +556,37 @@ def test_la_revision_vigente_cubre_la_diferencia(db, servicio, consulta):
         ["facturada"], True)
     assert (filas[DOS]["estados"], filas[DOS]["diferencia_revisada"]) == (
         ["con_diferencia"], False)
+
+
+def test_una_revision_cubre_solo_su_periodo_exacto(db, servicio, consulta):
+    consulta.trabajo(UNO, PODA, OCTUBRE, jornal="100")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
+                adjuntos=1)
+    # La de la 1.ª quincena es la más reciente y cubre el grupo, pero no es
+    # del mes entero: el Resumen, que mira el mes entero, no la toma.
+    revision(db, UNO, [("MANUALES", "horas_peon")], creada_en=datetime(2026, 11, 5),
+             hasta=date(2026, 10, 15))
+
+    fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
+    assert (fila["estados"], fila["diferencia_revisada"]) == (["con_diferencia"], False)
+
+    # Una anterior del mes entero sí cubre, aunque la de la quincena sea más
+    # nueva: cada período tiene su vigente.
+    revision(db, UNO, [("MANUALES", "horas_peon")], creada_en=datetime(2026, 11, 1))
+
+    fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
+    assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
+
+
+def test_sin_grupo_se_revisa_con_el_grupo_nulo(db, servicio, consulta):
+    comprobante(db, UNO, [(TAREA_VIEJA, "horas_peon", date(2026, 10, 1), "5", "250")],
+                adjuntos=1)
+    revision(db, UNO, [(None, "horas_peon")], creada_en=datetime(2026, 11, 1))
+
+    fila = por_cliente(servicio.resumen("2026-10", "2026-10"), OCTUBRE)[UNO]
+
+    assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
+    assert fila["grupos"][0]["grupo"] == "Sin grupo"
 
 
 # ─── Orden y aviso ──────────────────────────────────────────────────────────
@@ -525,10 +629,10 @@ def test_tareas_sin_unidad_con_su_cantidad_de_clientes(servicio, consulta):
 
     assert respuesta["tareas_sin_unidad"] == [
         {"tarea_id": ATADO, "nombre": "ATADO", "clientes": 2}]
-    # Una tarea sin unidad no suma en ninguna columna.
+    # Una tarea sin unidad da una línea sin unidad y sin campo, que supera
+    # porque tuvo partes.
     fila = por_cliente(respuesta, OCTUBRE)[UNO]
-    assert all(fila[u] == D("0") for u in
-               ("horas_peon", "horas_tractor", "tancadas", "plantas", "hectareas"))
+    assert fila["grupos"] == [linea("MANUALES", None, None, "0", supera=True)]
 
 
 # ─── refrescar ──────────────────────────────────────────────────────────────
