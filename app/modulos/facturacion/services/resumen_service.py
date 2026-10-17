@@ -128,8 +128,8 @@ class SinRevision(ErrorResumen):
 
 
 # ─── Lecturas de la base propia, siempre frescas ────────────────────────────
-# Funciones sueltas y no métodos: las usan también el Detalle y el script de
-# aceptación, que no tienen por qué armar el servicio entero.
+# Funciones sueltas y no métodos: las usa también el Detalle, que no tiene por
+# qué armar el Resumen entero.
 
 def leer_lineas(db: Session, desde: date, hasta: date,
                 cliente_id: int | None = None) -> list[LineaFacturada]:
@@ -305,7 +305,30 @@ class ResumenService:
         {umbral_pct, mes_corte, mes_en_curso, leido_en, filas,
         tareas_sin_unidad, actualizado_en, actualizado_por_nombre}. Una fila
         por Cliente y mes, cada una con el filtro recortado a su mes
-        (decisión 6 de la spec de la E3a por grupo).
+        (decisión 6 de la spec de la E3a por grupo). Lo lee y lo cruza
+        cruce_del_periodo()."""
+        lectura = self.cruce_del_periodo(desde, hasta, refrescar)
+        configuracion = lectura.configuracion
+        return {
+            "umbral_pct": configuracion["umbral_pct"],
+            "mes_corte": configuracion["mes_corte"],
+            "mes_en_curso": lectura.mes_en_curso,
+            "leido_en": lectura.leido_en,
+            "filas": [fila_del_resumen(c, lectura.nombres.get(c.cliente_id))
+                      for c in lectura.cruces],
+            "tareas_sin_unidad": tareas_sin_unidad(lectura.cruces),
+            "actualizado_en": configuracion["actualizado_en"],
+            "actualizado_por_nombre": configuracion["actualizado_por_nombre"],
+        }
+
+    def cruce_del_periodo(self, desde: str, hasta: str,
+                          refrescar: bool = False) -> "CruceDelPeriodo":
+        """Lo que lee y cruza el Resumen de desde a hasta ("AAAA-MM-DD", los
+        dos incluidos): los Cruces que se muestran, ya en el orden de sus
+        filas (el mes más nuevo primero, después el Estado más urgente y
+        después el Cliente). Lo usan el Resumen y el script de aceptación
+        (scripts/cruce_facturacion.py), así el CSV da lo mismo que la
+        pantalla (decisión 9 de la spec).
 
         El rango se valida antes de leer el campo. Con refrescar, la caché del
         Cruce se vacía antes de leer ("Volver a leer"). `leido_en` es la más
@@ -330,21 +353,17 @@ class ResumenService:
             desde=inicio, hasta=fin)
         visibles = [c for c in cruces if se_muestra(c)]
         nombres = self.nombres_de_clientes({c.cliente_id for c in visibles})
-
-        filas = [_fila(c, nombres.get(c.cliente_id)) for c in visibles]
-        filas.sort(key=lambda f: (-f["mes"].toordinal(),
-                                  ESTADOS.index(f["estados"][0]),
-                                  f["cliente_nombre"] or "", f["cliente_id"]))
-        return {
-            "umbral_pct": configuracion["umbral_pct"],
-            "mes_corte": configuracion["mes_corte"],
-            "mes_en_curso": en_curso,
-            "leido_en": min(trabajado["leido_en"], tareas["leido_en"]),
-            "filas": filas,
-            "tareas_sin_unidad": tareas_sin_unidad(visibles),
-            "actualizado_en": configuracion["actualizado_en"],
-            "actualizado_por_nombre": configuracion["actualizado_por_nombre"],
-        }
+        visibles.sort(key=lambda c: (-c.mes.toordinal(), ESTADOS.index(c.estados[0]),
+                                     nombres.get(c.cliente_id) or "", c.cliente_id))
+        return CruceDelPeriodo(
+            configuracion=configuracion,
+            mes_en_curso=en_curso,
+            leido_en=min(trabajado["leido_en"], tareas["leido_en"]),
+            trabajado=trabajado["filas"],
+            tareas=tareas["filas"],
+            cruces=visibles,
+            nombres=nombres,
+        )
 
     # ─── Detalle (ruta 14) ──────────────────────────────────────────────────
 
@@ -571,6 +590,21 @@ def _validar_rango(desde: date, hasta: date, en_curso: date) -> None:
 
 
 @dataclass
+class CruceDelPeriodo:
+    """Lo que lee y cruza el Resumen de un período (cruce_del_periodo).
+    `cruces` son los que se muestran, en el orden de las filas del Resumen;
+    `trabajado` y `tareas`, las filas del campo tal como vienen de la caché
+    (no se modifican); `nombres`, {cliente_id: nombre} de esos Cruces."""
+    configuracion: dict
+    mes_en_curso: date
+    leido_en: datetime
+    trabajado: list[dict]
+    tareas: list[dict]
+    cruces: list[CruceMes]
+    nombres: dict
+
+
+@dataclass
 class DatosDelMes:
     """Lo que el Detalle y la Revisión leen de un Cliente en un mes, ya
     cruzado. `lineas` son todas las del mes, también las que no cuentan en el
@@ -708,8 +742,9 @@ def _linea(grupo: FilaGrupo) -> dict:
     }
 
 
-def _fila(cruce: CruceMes, cliente_nombre: str | None) -> dict:
-    """Una fila del Resumen (ruta 13): su período (el filtro recortado al
+def fila_del_resumen(cruce: CruceMes, cliente_nombre: str | None) -> dict:
+    """Una fila del Resumen (ruta 13), que también usa el script de
+    aceptación para su CSV: su período (el filtro recortado al
     mes), las líneas (grupo, unidad) en el orden del motor, cuántas superan
     (decisión 2 de la spec: cuenta líneas, no grupos), el Estado del mes y los
     Comprobantes que caen en parte afuera del período (decisión 7). Sólo
