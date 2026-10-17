@@ -18,7 +18,8 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## Próximo paso
 
-Mergear el Ticket 1 en `feature/facturacion-e3`, aplicar la 006 en `testing` con respaldo y OK, y
+Mergear el Ticket 1 en `feature/facturacion-e3`, una revisión corta de la 006 sola (pedido del usuario,
+2026-10-17: que no llegue a `testing` sin revisar), aplicarla en `testing` con respaldo y OK, y
 seguir con los Tickets 2, 3, 4 y 5a en serie. Después, revisión de código, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
