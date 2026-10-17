@@ -4114,3 +4114,87 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
   pantalla ya declaradas (`pendientes` y `cruce`); cómo pasan al Período facturado los
   Comprobantes ya cargados y los históricos, que hoy tienen una fecha en cada Línea; dónde
   cambia el Admin el Umbral y el Mes de corte; dónde va el aviso de tarea sin Unidad sugerida.
+
+## 2026-10-17 — Resumen y Detalle de Facturación por grupo, con filtro por día (Facturación E3a, BK #102)
+
+**Mergeado**
+- PR #102 (backend) — etapa 3a de Facturación: el Cruce de lo trabajado contra lo facturado por
+  grupo de tareas y unidad, el Resumen, el Detalle, la Revisión de diferencia, la configuración,
+  el script del cruce y las migraciones 004, 005 y 006. Merge `6bf4a77`.
+- PR #83 (frontend, hermano) — las pantallas del Resumen y el Detalle, con los modales de partes
+  y de Revisión y el selector de período. Merge `65b7f98`. Su cuerpo remite al del BK #102.
+
+**Por frontera**
+- Facturación: `services/cruce.py` lee los partes del campo (la misma consulta que Power BI, con
+  las unidades de pulverización en 0) y las Líneas facturadas, y arma una fila por (grupo de
+  tareas, unidad) con Campo, Facturado, Dif. y Dif. % contra un Umbral único. Rutas nuevas
+  `GET /facturacion/resumen` (una fila por mes y Cliente con su Estado del mes y una línea por
+  grupo y unidad) y `GET /facturacion/detalle` (los grupos con sus tareas, los partes, el Precio
+  sugerido y el TOTAL en pesos), las dos con Desde y Hasta por día. Revisión de diferencia
+  (dejar y deshacer) con su período, que responde 409 si cambiaron los grupos que superan.
+  Estado nuevo "Sin comparar en este período" y día inválido con 422 `fecha_invalida`. El Umbral
+  y el Mes de corte los cambia sólo el Admin. La pantalla `resumen` reemplaza a `pendientes` y
+  `cruce`, cuyas claves se retiran y no se reutilizan. `scripts/cruce_facturacion.py` saca el
+  CSV por grupo y unidad con el cálculo del Resumen y, al lado, un CSV por tarea con la medida
+  "como Power BI". Suite completa: 1264 passed (976 de Facturación).
+- Prod y Datos: la `facturacion/004` crea la configuración (Umbral y Mes de corte) y la Revisión
+  de diferencia; la 005 borra de `rol_permiso` (tabla del núcleo, excepción a la regla 6 de
+  GUIA-MODULOS) los permisos guardados de `pendientes` y `cruce`; la 006 pasa la Revisión a
+  grupos, le suma el período y borra la tabla de la Revisión por tarea, con sus filas.
+- Docs: el glosario de Facturación, `pantallas.md`, el plan del módulo y las dos specs (la del
+  2026-10-14 y la de la E3a por grupo del 2026-10-17, que reemplaza lo que la primera decía del
+  cruce por tarea, el filtro por meses, la Revisión por tarea y el script).
+
+**Decisiones**
+- La diferencia se mide por grupo de tareas y unidad, no por tarea: **revierte la decisión del
+  BK #100** (entrada del 2026-10-14), que había pasado a medirla por tarea. Porqué: construido
+  contra `testing`, por tarea daba "Con diferencia" en meses bien facturados, porque las
+  contadoras facturan por grupo de tareas y una tarea del grupo puede ir facturada bajo otra. Un
+  grupo con dos unidades da dos filas. Las tareas ya no avisan: se ven al abrir el grupo.
+- Filtro por día, con atajos (Quincena pasada, Esta quincena, Mes pasado, que es el de arranque,
+  Este mes, Últimos 3 meses, Este año y Otro período). Porqué: casi toda la facturación es
+  quincenal y de a meses no se podía controlar una quincena.
+- Una Línea cuenta sólo si su período entero cae en el filtro; si cae en parte, su grupo no se
+  compara (Facturado "fuera del filtro", sin Dif.) y la fila lo avisa, con un botón para mirar el
+  período entero. El período sale de cada Línea por su fecha (el 1 cubre del 1 al 15 y el 16,
+  hasta fin de mes), no del comprobante entero. Porqué: el histórico tiene comprobantes con
+  Líneas de las dos quincenas. Descartado: repartir la factura en proporción al campo o a los
+  días, que inventaba diferencias.
+- La Revisión cubre sólo su período exacto (la de una quincena no cubre el mes ni al revés); se
+  guardan todas, con quién revisó y quién deshizo, y vale la más reciente no deshecha de ese
+  período. Porqué no registrado en el PR.
+- El TOTAL del Detalle deja afuera, por los dos lados, los grupos que no se comparan, los mixtos
+  incluidos. Porqué: vino de la revisión de código (1 urgent, Paso R1): valorizaba lo trabajado
+  de un grupo fuera del filtro contra $0 e inventaba una diferencia en pesos; lo eligió el
+  usuario. Descartado: sacar sólo el campo, que deja una diferencia falsa al revés (commit
+  `2aed4cd`).
+- El script del cruce usa el cálculo del módulo y no una cuenta propia. Porqué: así la F5 contra
+  Power BI prueba lo mismo que ve la pantalla. El CSV por tarea va aparte porque la medida "como
+  Power BI" sólo se define por tarea (commit `a4fc8ee`).
+- La consulta del campo toma las unidades de pulverización en 0. Porqué: es lo que hace la
+  consulta de Power BI, para que el Cruce compare lo mismo que el tablero (commit `6135ba2`).
+- Las claves `pendientes` y `cruce` se retiran y no se reutilizan, y sus permisos no se copian a
+  `resumen`. Porqué: que un rol con permisos viejos no gane la pantalla nueva (commit `7520abf`).
+- Un precio 0 en la última Factura no da Precio sugerido, sin caer a una Factura anterior; un
+  precio medio del mes en 0 también es "sin precio". Porqué: un precio 0 suele ser un error de
+  carga; decisión del usuario (commits `95146a0` y `1f9c3f9`).
+
+**Estado**
+- Deploy: no.
+- Migraciones: la `facturacion/006` aplicada sólo en `testing`, dos veces y con respaldo y OK (se
+  perdieron, como dice la migración, las 7 filas de la Revisión por tarea); la 004 y la 005 ya
+  estaban en `testing`. Ninguna en producción.
+- Verificación: contra `testing`, de julio a septiembre, las 180 líneas del CSV del script dan
+  igual que el Resumen; smoke en el navegador con el front (1366 px sin scroll horizontal,
+  teclado en filas, modales y selectores, Revisar y Deshacer de un período parcial, el 409).
+  Revisión de código de dos ejes en dos rondas: 1 urgent arreglado, 0 high, 16 minor sin tocar
+  y 11 descartados. No probado: la F5 del usuario contra Power BI.
+
+**Pendiente**
+- La F5 del usuario contra Power BI con el CSV por grupo.
+- El deploy, con OK y junto con el front: con el backend parado, la 004 y la 006 (la 006
+  necesita que nadie inserte Revisiones entre su UPDATE y su MODIFY); arrancar el backend nuevo;
+  después, la 005. `ORDEN.txt` dice 004, 005, 006, que es el orden de una base nueva.
+- La E3b (Precarga y Período facturado), en el plan del 2026-10-14.
+- Los 16 minor y los de la 006 y del smoke, en el cuerpo del BK #102 y en "A futuro" de
+  `docs/estado.md`.

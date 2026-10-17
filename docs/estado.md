@@ -6,60 +6,17 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Facturación, etapa 3 (Resumen, Detalle y Precarga): la E3a se rehace por grupo de tareas y unidad, con
-  filtro por día. Spec aprobada el 2026-10-17 (prueba del flujo nuevo: spec con tickets, sin
-  planificador), en `docs/superpowers/plans/2026-10-17-facturacion-e3a-por-grupo.md` de la rama
-  `feature/facturacion-e3`; reemplaza lo que el plan del 2026-10-14 dice del cruce por tarea, el filtro
-  por meses, la Revisión por tarea y el script del cruce. Fase 3: el Ticket 1 (Resumen por grupo y
-  migración 006) y el 5b (docs) están mergeados en `feature/facturacion-e3`, en los dos repos. La 006
-  se revisó sola (0 urgent y 0 high; los minors van al cuerpo del PR y el deploy la aplica con el
-  backend parado) y se aplicó en `testing` con respaldo y OK, dos veces: el modelo de la rama coincide
-  con la base. Las 7 filas de la Revisión por tarea de `testing` se perdieron con la tabla, como
-  dice la migración. El Ticket 2 (Detalle por grupo, con el modal de partes) está commiteado en
-  `feature/facturacion-e3` en los dos repos (unos 25 minutos, 153k tokens); queda para el smoke que a
-  1366 px no haya scroll horizontal y el teclado en las filas y el modal. El Ticket 3 (la Revisión por
-  grupo en un modal, con el boceto aprobado el 2026-10-17) también está commiteado en los dos repos
-  (unos 22 minutos, 102k tokens); queda para el smoke el foco y el teclado del modal (el texto del 409
-  lo confirmó el usuario). El Ticket 4 (filtro por día y aviso de lo que no entra) está commiteado en
-  los dos repos (unos 52 minutos, 94k tokens): sin migración; Mes pasado da igual que el Ticket 3
-  contra `testing` (julio y septiembre) y Este año tarda unos 2 s, con una sola lectura del campo.
-  Quedan para el smoke los 1366 px con la fila del aviso, el botón del aviso, el teclado en los
-  selectores de fecha y Revisar y Deshacer de un período parcial. Rompe `scripts/cruce_facturacion.py`
-  (lee meses y pasa el último mes como día 1), que arregla el Ticket 5a. El Ticket 5a (el script del
-  cruce por grupo y unidad) está commiteado en el backend (unos 15 minutos, 158k tokens): usa el mismo
-  cálculo que el Resumen y saca, al lado, un CSV por tarea con la medida "como Power BI"; contra
-  `testing`, de julio a septiembre, sus 180 líneas dan igual que el Resumen. Con eso están los cinco
-  tickets. La spec se corrigió con el usuario: se guardan todas las Revisiones por
-  período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
-  base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
-  Fase 4: la revisión de código está hecha, en dos rondas porque la rama toca la migración. Hubo 1 urgent:
-  el TOTAL del Detalle sumaba los grupos fuera del filtro e inventaba una diferencia. Se arregló como
-  Paso R1 (commit `2aed4cd`). El usuario eligió dejarlos afuera por los dos lados, los mixtos incluidos,
-  y la decisión 4 de la spec quedó ampliada. Hubo 0 high, 16 minor que van al cuerpo de los PRs y 11
-  descartados. Los tests de facturación dan 976 passed.
-  Smoke en el navegador contra `testing` (2026-10-17): anduvieron el Detalle a 1366 px, el teclado en
-  grupos y tareas, el modal de partes, Revisar y Deshacer de un período parcial, el 409 y los selectores
-  de fecha (con teclado recarga el Resumen). Hallazgos: a 1366 px la tabla del Resumen pasa el ancho
-  (1135 contra 1074 px), corta "Cargar factura" y parte el estado en tres líneas; después del botón del
-  aviso y de un click afuera del modal de Revisión, el foco cae en el cuerpo de la página; Desde y Hasta
-  quedan apilados; con una Revisión vieja sin grupos (sólo en `testing`, por la 006) el aviso dice
-  "que cubría .". El usuario eligió arreglar el ancho y el foco antes de los PRs: Pasos R2 y R3 de la
-  spec, commiteados en `feature/facturacion-e3` (front y spec) y verificados en el navegador (a 1366 px,
-  sin scroll horizontal en Mes pasado, Este año y con el aviso; a 1920, el estado en una línea; el foco
-  vuelve al título y al botón que abrió el modal). Los otros dos van como minor.
-  Fase 5: abiertos los PRs hermanos, sin mergear: BK #102 y FT #83 (2026-10-17). El cuerpo del BK #102
-  tiene el porqué, el orden del deploy (la 004 y la 006 con el backend parado, la 005 después) y los
-  minors de los dos repos.
+- Nada.
 
 ## Próximo paso
 
-La F5 del usuario contra Power BI con el CSV por grupo; después, el merge del BK #102 y el FT #83 con
-su OK. Toda migración, primero en
-`testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
-rol (2026-10-13).
+La F5 del usuario contra Power BI y, con su OK, el deploy de la E3a; después, la E3b (Precarga y
+Período facturado). Toda migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se
+deploya por avances, escondida: nadie tiene su rol (2026-10-13).
 
 ## Pendientes del usuario
 
+- Facturación E3a (BK #102 y FT #83, mergeados el 2026-10-17): la F5 del usuario contra Power BI con el CSV por grupo, y después el deploy con OK, junto con el front (la 004 y la 006 con el backend parado, la 005 después).
 - Terceros, etapa 11 de Pitu (BK #101 y FT #82): revisados el 2026-10-15, con la revisión dejada como comentario en los dos PRs (3 urgent y 10 high). No se mergean hasta que Pitu los arregle. El FT #82, además, espera la decisión del usuario sobre la dependencia `html2pdf.js`. Antes del deploy, confirmar en producción lo que da por hecho la migración `terceros/010`.
 - Cargar `TALLER_SHEET_URL` en el `.env` del servidor y reiniciar el backend: hasta entonces las alertas de Terceros responden 502 a propósito (deploy del 2026-09-30).
 - Asignar el rol "Liquidador de terceros" desde Administración a quienes liquiden Terceros (nace sin personas; BK #83, deploy del 2026-10-11).
