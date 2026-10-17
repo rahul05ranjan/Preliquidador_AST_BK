@@ -10,7 +10,9 @@ cada una; los pesos salen del precio medio de las Facturas del mes, si no del
 Precio sugerido, y si tampoco hay la tarea queda sin precio (también si el
 precio medio da 0 o menos, paso A8b); la Revisión vigente trae quién la dejó y
 sus (grupo, unidad); los estados son los del Resumen para el mismo mes, porque
-los dos pasan por el mismo motor; y el 404 sigue la regla del contrato.
+los dos pasan por el mismo motor; y el 404 sigue la regla del contrato. Con
+Desde y Hasta (Ticket 4), el Detalle se recorta al mes como la fila del
+Resumen: los partes, la Revisión y lo que cuenta son de ese período.
 
 La consulta falsa arma lo trabajado por mes del Resumen con los mismos partes
 que da al Detalle, así las dos pantallas leen el mismo campo.
@@ -37,7 +39,7 @@ from app.modulos.facturacion.models import (
 from app.modulos.facturacion.services import consulta_externa
 from app.modulos.facturacion.services.precios import precios_sugeridos
 from app.modulos.facturacion.services.resumen_service import (
-    ClienteNoEncontrado, MesInvalido, ResumenService,
+    ClienteNoEncontrado, FechaInvalida, MesInvalido, RangoInvalido, ResumenService,
 )
 from tests.facturacion import test_resumen_service as resumen_a6
 
@@ -101,7 +103,7 @@ class ConsultaFalsa(resumen_a6.ConsultaFalsa):
                                      "partes": 0})
         for cliente_id, p in self.partes:
             mes = p["fecha"].replace(day=1)
-            if desde.replace(day=1) <= mes <= hasta.replace(day=1):
+            if desde <= p["fecha"] <= hasta:
                 suma = sumas[(cliente_id, p["tarea_id"], mes)]
                 for medida in ("horas_jornal", "horas_maquina", "unidades", "tancadas"):
                     suma[medida] += p[medida]
@@ -189,10 +191,11 @@ def comprobante(db, cliente_id, lineas, *, tipo="factura", es_historico=False,
 
 
 def revision(db, cliente_id, mes, grupos, *, creada_en, creada_por=None,
-             deshecha=False, comentario="Explicada."):
-    """Una Revisión del mes entero."""
+             deshecha=False, comentario="Explicada.", desde=None, hasta=None):
+    """Una Revisión; sin desde ni hasta, del mes entero."""
     r = RevisionDiferencia(
-        cliente_id=cliente_id, mes=mes, desde=mes, hasta=fechas.fin_de_mes(mes),
+        cliente_id=cliente_id, mes=mes, desde=desde or mes,
+        hasta=hasta or fechas.fin_de_mes(mes),
         comentario=comentario, creada_en=creada_en, creada_por=creada_por,
         deshecha_en=datetime(2026, 11, 9) if deshecha else None,
         grupos=[RevisionGrupo(grupo=g, unidad=u) for g, u in grupos])
@@ -239,6 +242,8 @@ def test_el_encabezado_trae_la_configuracion_y_la_lectura_mas_vieja(servicio, co
     assert detalle["cliente_id"] == UNO
     assert detalle["cliente_nombre"] == "CLIENTE UNO"
     assert detalle["mes"] == OCTUBRE
+    # Sin Desde ni Hasta, el mes entero.
+    assert (detalle["desde"], detalle["hasta"]) == (OCTUBRE, date(2026, 10, 31))
     assert detalle["umbral_pct"] == config.UMBRAL_INICIAL
     assert detalle["mes_corte"] == config.MES_CORTE_INICIAL
     # Dos lecturas del campo con hora distinta: vale la más vieja.
@@ -583,7 +588,7 @@ def test_los_estados_son_los_del_resumen_para_el_mismo_mes(db, servicio, consult
     consulta.parte(DOS, RALEO, date(2026, 11, 3), unidades="300")
     comprobante(db, DOS, [(RALEO, "plantas", date(2026, 11, 1), "100", "300")])
 
-    resumen = servicio.resumen("2026-09", "2026-11")
+    resumen = servicio.resumen("2026-09-01", "2026-11-30")
     detalles = {(f["cliente_id"], f["mes"]): servicio.detalle(
                     f["cliente_id"], f["mes"].strftime("%Y-%m"))
                 for f in resumen["filas"]}
@@ -625,6 +630,119 @@ def test_en_los_meses_que_no_se_controlan_nada_supera(db, servicio, consulta, me
     assert detalle["se_puede_revisar"] is False
     # Los números se muestran igual.
     assert linea(detalle, "MANUALES", "horas_peon")["diferencia"] == D("-90")
+
+
+# ─── El filtro por día (Ticket 4) ───────────────────────────────────────────
+
+def test_con_desde_y_hasta_el_detalle_se_recorta_a_ese_periodo(db, servicio, consulta):
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="8")
+    consulta.parte(UNO, PODA, date(2026, 10, 12), jornal="5")
+    consulta.parte(UNO, RALEO, date(2026, 10, 4), unidades="300")
+    # La Factura de PODA cubre del 1 al 15: cae en parte afuera.
+    en_parte = comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "8", "800")],
+                           adjuntos=1)
+    # Una Línea del 16 cae entera afuera: su Comprobante no va.
+    comprobante(db, UNO, [(RALEO, "plantas", date(2026, 10, 16), "300", "900")],
+                adjuntos=1)
+
+    detalle = servicio.detalle(UNO, "2026-10", desde="2026-10-01", hasta="2026-10-10")
+
+    assert (detalle["desde"], detalle["hasta"]) == (OCTUBRE, date(2026, 10, 10))
+    assert ("partes", UNO, OCTUBRE, date(2026, 10, 10)) in consulta.lecturas
+    poda = linea(detalle, "MANUALES", "horas_peon")
+    assert poda["fuera_del_filtro"] is True
+    assert (poda["campo"], poda["facturado"]) == (D("8"), D("0"))
+    assert (poda["diferencia"], poda["diferencia_pct"], poda["supera"]) == (None, None, False)
+    assert [p["fecha"] for p in fila(detalle, PODA)["partes"]] == [date(2026, 10, 3)]
+    raleo = linea(detalle, "MANUALES", "plantas")
+    assert raleo["fuera_del_filtro"] is False
+    assert raleo["supera"] is True
+    assert [c["id"] for c in detalle["comprobantes"]] == [en_parte.id]
+    assert detalle["estados"] == ["con_diferencia"]
+    # Lo facturado del TOTAL sólo suma las Líneas que cuentan.
+    assert detalle["total"]["facturado_pesos"] == D("0")
+
+
+def test_con_todo_afuera_el_detalle_es_sin_comparar_y_no_se_revisa(db, servicio, consulta):
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="8")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "20", "2000")],
+                adjuntos=1)
+
+    detalle = servicio.detalle(UNO, "2026-10", desde="2026-10-01", hasta="2026-10-10")
+
+    assert detalle["estados"] == ["sin_comparar"]
+    assert detalle["se_puede_revisar"] is False
+
+
+def test_sin_hasta_el_detalle_va_hasta_fin_de_mes(servicio, consulta):
+    detalle = servicio.detalle(UNO, "2026-10", desde="2026-10-16")
+    assert (detalle["desde"], detalle["hasta"]) == (date(2026, 10, 16), date(2026, 10, 31))
+
+
+def test_un_rango_de_dos_meses_se_recorta_al_mes_del_detalle(servicio, consulta):
+    detalle = servicio.detalle(UNO, "2026-10", desde="2026-09-20", hasta="2026-10-15")
+    assert (detalle["desde"], detalle["hasta"]) == (OCTUBRE, date(2026, 10, 15))
+
+
+def test_los_estados_son_los_de_la_fila_del_resumen_con_el_mismo_filtro(db, servicio,
+                                                                        consulta):
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="100")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
+                adjuntos=1)
+    consulta.parte(DOS, PODA, date(2026, 10, 3), jornal="10")
+    comprobante(db, DOS, [(PODA, "horas_peon", date(2026, 10, 1), "10", "500")])
+    consulta.parte(CUATRO, PODA, date(2026, 10, 3), jornal="10")
+
+    for desde, hasta in (("2026-10-01", "2026-10-15"), ("2026-10-01", "2026-10-10")):
+        resumen = servicio.resumen(desde, hasta)
+        for f in resumen["filas"]:
+            detalle = servicio.detalle(f["cliente_id"], "2026-10", desde=desde, hasta=hasta)
+            assert detalle["estados"] == f["estados"], (desde, hasta, f["cliente_id"])
+            assert ([(g["grupo"], g["unidad"], g["fuera_del_filtro"]) for g in detalle["grupos"]]
+                    == [(g["grupo"], g["unidad"], g["fuera_del_filtro"]) for g in f["grupos"]])
+
+
+def test_la_revision_del_detalle_es_la_de_su_periodo_exacto(db, servicio, consulta, persona):
+    consulta.parte(UNO, PODA, date(2026, 10, 3), jornal="100")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 10, 1), "150", "7500")],
+                adjuntos=1)
+    quincena = revision(db, UNO, OCTUBRE, [("MANUALES", "horas_peon")],
+                        creada_en=datetime(2026, 11, 5), hasta=date(2026, 10, 15))
+
+    primera = servicio.detalle(UNO, "2026-10", desde="2026-10-01", hasta="2026-10-15")
+    assert primera["revision"]["id"] == quincena.id
+    assert (primera["revision"]["desde"], primera["revision"]["hasta"]) == (
+        OCTUBRE, date(2026, 10, 15))
+    assert (primera["estados"], primera["diferencia_revisada"]) == (["facturada"], True)
+
+    # La de la 1.ª quincena no cubre el mes entero.
+    mes = servicio.detalle(UNO, "2026-10")
+    assert mes["revision"] is None
+    assert (mes["estados"], mes["diferencia_revisada"]) == (["con_diferencia"], False)
+
+
+@pytest.mark.parametrize("desde, hasta, campo", [
+    ("2026-10-11", "2026-10-10", "hasta"),   # hasta antes de desde
+    ("2026-11-01", "2026-11-10", "desde"),   # no toca el mes del Detalle
+    ("2026-08-01", "2026-09-30", "desde"),
+])
+def test_un_periodo_que_no_sirve_es_rango_invalido(servicio, consulta, desde, hasta, campo):
+    with pytest.raises(RangoInvalido) as error:
+        servicio.detalle(UNO, "2026-10", desde=desde, hasta=hasta)
+    assert error.value.campo == campo
+    assert error.value.mensaje
+    assert consulta.lecturas == []
+
+
+@pytest.mark.parametrize("desde, hasta, campo", [
+    ("2026-10", None, "desde"),
+    (None, "2026-10-32", "hasta"),
+])
+def test_una_fecha_mal_escrita_es_fecha_invalida(servicio, consulta, desde, hasta, campo):
+    with pytest.raises(FechaInvalida) as error:
+        servicio.detalle(UNO, "2026-10", desde=desde, hasta=hasta)
+    assert error.value.campo == campo
+    assert consulta.lecturas == []
 
 
 # ─── 404 y errores ──────────────────────────────────────────────────────────

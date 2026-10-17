@@ -5,8 +5,9 @@ Detalle.
 Lo que se cuida acá: el comentario es obligatorio y de hasta 500 caracteres,
 medidos después de recortar los espacios de los bordes; sólo se revisa un mes
 Con diferencia (cualquier otro estado da 409 `no_revisable`, con un mensaje
-según el estado); la Revisión guarda quién, cuándo, su período (hasta el
-Ticket 4, siempre el mes entero) y las (grupo, unidad) que superaban,
+según el estado); la Revisión guarda quién, cuándo, su período (el filtro
+recortado al mes; sin Desde ni Hasta, el mes entero) y las (grupo, unidad)
+que superaban,
 calculadas con los mismos datos que vio el Detalle; con ella el mes queda
 Facturada y revisada, hasta que supere un grupo nuevo; y deshacerla deja el
 registro sellado y el mes otra vez Con diferencia.
@@ -27,8 +28,8 @@ from app.modulos.facturacion import fechas
 from app.modulos.facturacion.models import RevisionDiferencia
 from app.modulos.facturacion.services import consulta_externa, resumen_service
 from app.modulos.facturacion.services.resumen_service import (
-    ClienteNoEncontrado, MesInvalido, NoRevisable, ResumenService, RevisionInvalida,
-    SinRevision,
+    ClienteNoEncontrado, FechaInvalida, MesInvalido, NoRevisable, RangoInvalido,
+    ResumenService, RevisionInvalida, SinRevision,
 )
 from tests.facturacion import test_detalle as detalle_a8
 
@@ -302,7 +303,7 @@ def test_devuelve_el_detalle_facturada_y_revisada(db, servicio, consulta, person
     assert (detalle["revision"]["desde"], detalle["revision"]["hasta"]) == (
         OCTUBRE, date(2026, 10, 31))
     # Y el Resumen dice lo mismo.
-    [fila] = servicio.resumen("2026-10", "2026-10")["filas"]
+    [fila] = servicio.resumen("2026-10-01", "2026-10-31")["filas"]
     assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
 
 
@@ -395,7 +396,7 @@ def test_deshacer_dos_veces_da_409(db, servicio, consulta, persona, reloj):
 def test_deshacer_no_toca_una_revision_de_otro_periodo(db, servicio, consulta, persona,
                                                        reloj):
     con_diferencia(db, consulta)
-    # Una Revisión de la 1.ª quincena: hasta el Ticket 4 se deshace sólo la
+    # Una Revisión de la 1.ª quincena: sin Desde ni Hasta se deshace sólo la
     # del mes entero.
     db.add(RevisionDiferencia(cliente_id=UNO, mes=OCTUBRE, desde=OCTUBRE,
                               hasta=date(2026, 10, 15), comentario="Quincena.",
@@ -407,6 +408,60 @@ def test_deshacer_no_toca_una_revision_de_otro_periodo(db, servicio, consulta, p
 
     [guardada] = revisiones(db)
     assert guardada.deshecha_en is None
+
+
+def test_con_la_quincena_se_guarda_y_se_deshace_la_de_ese_periodo(
+        db, servicio, consulta, persona, otra_persona, reloj):
+    con_diferencia(db, consulta)
+    quincena = {"desde": "2026-10-01", "hasta": "2026-10-15"}
+
+    detalle = servicio.revisar(UNO, "2026-10", "Explicada.", persona.id, **quincena)
+
+    [guardada] = revisiones(db)
+    assert (guardada.desde, guardada.hasta) == (OCTUBRE, date(2026, 10, 15))
+    assert (detalle["desde"], detalle["hasta"]) == (OCTUBRE, date(2026, 10, 15))
+    assert (detalle["estados"], detalle["diferencia_revisada"]) == (["facturada"], True)
+    # La de la 1.ª quincena no cubre el mes entero.
+    [mes] = servicio.resumen("2026-10-01", "2026-10-31")["filas"]
+    assert (mes["estados"], mes["diferencia_revisada"]) == (["con_diferencia"], False)
+    [primera] = servicio.resumen("2026-10-01", "2026-10-15")["filas"]
+    assert (primera["estados"], primera["diferencia_revisada"]) == (["facturada"], True)
+    # Sin Desde ni Hasta no se deshace: es de otro período.
+    with pytest.raises(SinRevision):
+        servicio.deshacer_revision(UNO, "2026-10", otra_persona.id)
+
+    reloj["ahora"] = DESHECHA
+    detalle = servicio.deshacer_revision(UNO, "2026-10", otra_persona.id, **quincena)
+
+    db.refresh(guardada)
+    assert (guardada.deshecha_en, guardada.deshecha_por) == (DESHECHA, otra_persona.id)
+    assert detalle["estados"] == ["con_diferencia"]
+
+
+def test_sin_comparar_no_se_revisa(db, servicio, consulta, persona, reloj):
+    # Del 1 al 10, las dos Líneas (del 1 al 15) caen en parte: nada se compara.
+    con_diferencia(db, consulta)
+
+    with pytest.raises(NoRevisable) as error:
+        servicio.revisar(UNO, "2026-10", "Explicada.", persona.id,
+                         desde="2026-10-01", hasta="2026-10-10")
+
+    assert "período" in error.value.mensaje
+    assert revisiones(db) == []
+
+
+@pytest.mark.parametrize("desde, hasta, error", [
+    ("2026-10-11", "2026-10-10", RangoInvalido),
+    ("2026-11-01", None, RangoInvalido),
+    ("2026-10", None, FechaInvalida),
+])
+def test_un_periodo_que_no_sirve_no_lee_ni_guarda(servicio, consulta, persona, reloj,
+                                                  desde, hasta, error):
+    with pytest.raises(error):
+        servicio.revisar(UNO, "2026-10", "Explicada.", persona.id, desde=desde, hasta=hasta)
+    with pytest.raises(error):
+        servicio.deshacer_revision(UNO, "2026-10", persona.id, desde=desde, hasta=hasta)
+    assert consulta.lecturas == []
 
 
 def test_deshacer_otro_mes_no_toca_la_revision(db, servicio, consulta, persona, reloj):

@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from app.core.database import traducir_errores_externa
 from app.core.models import ahora_utc
-from app.modulos.facturacion.fechas import mes_siguiente
 from app.modulos.facturacion.unidades import traducir_unidad
 
 # El maestro de tareas: la misma tabla, el mismo filtro de bajas y el mismo
@@ -376,11 +375,12 @@ class ConsultaExternaService:
     # minutos; invalidar_cache_cruce() las borra.
 
     def trabajado_por_mes(self, desde: date, hasta: date) -> dict:
-        """Lo trabajado por cliente, tarea y mes, entre el mes de desde y el
-        de hasta (los dos incluidos). Cada fila: {cliente_id, tarea_id, mes
-        (día 1), horas_jornal, horas_maquina, unidades, tancadas, partes}."""
-        desde = desde.replace(day=1)
-        hasta_exclusivo = mes_siguiente(hasta)
+        """Lo trabajado por cliente, tarea y mes, entre desde y hasta (días,
+        los dos incluidos: el filtro del Resumen). Una sola consulta para todo
+        el rango, agrupada por mes en la base. Cada fila: {cliente_id,
+        tarea_id, mes (día 1), horas_jornal, horas_maquina, unidades,
+        tancadas, partes}."""
+        hasta_exclusivo = hasta + timedelta(days=1)
 
         def leer():
             filas = self._ejecutar(QUERY_TRABAJADO_POR_MES, {

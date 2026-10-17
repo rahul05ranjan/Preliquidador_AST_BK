@@ -199,13 +199,18 @@ def test_el_sql_de_partes_filtra_el_cliente_en_cada_rama():
 
 # ─── Lo que manda y lo que arma ─────────────────────────────────────────────
 
-def test_trabajado_por_mes_manda_el_primer_dia_del_mes_siguiente_como_hasta_exclusivo(hora):
+def test_trabajado_por_mes_manda_el_dia_siguiente_al_hasta_como_hasta_exclusivo(hora):
+    # Por día (spec de la E3a por grupo, decisión 6): una sola consulta para
+    # todo el filtro, agrupada por mes en la base.
     externa = SesionFalsa()
-    ConsultaExternaService(externa).trabajado_por_mes(date(2025, 11, 1), date(2025, 12, 1))
+    servicio = ConsultaExternaService(externa)
+    servicio.trabajado_por_mes(date(2025, 11, 1), date(2025, 12, 31))
+    servicio.trabajado_por_mes(date(2025, 11, 20), date(2025, 12, 10))
 
-    query, params = externa.llamadas[0]
+    (query, p1), (_, p2) = externa.llamadas
     assert query is QUERY_TRABAJADO_POR_MES
-    assert params == {"desde": date(2025, 11, 1), "hasta_exclusivo": date(2026, 1, 1)}
+    assert p1 == {"desde": date(2025, 11, 1), "hasta_exclusivo": date(2026, 1, 1)}
+    assert p2 == {"desde": date(2025, 11, 20), "hasta_exclusivo": date(2025, 12, 11)}
 
 
 def test_partes_de_cliente_manda_el_dia_siguiente_al_hasta_como_hasta_exclusivo(hora):
@@ -278,7 +283,7 @@ def test_tareas_cruce_lee_el_maestro_con_las_bajas(hora):
 # ─── La caché ───────────────────────────────────────────────────────────────
 
 LECTURAS = [
-    lambda s: s.trabajado_por_mes(date(2026, 8, 1), date(2026, 9, 1)),
+    lambda s: s.trabajado_por_mes(date(2026, 8, 1), date(2026, 9, 30)),
     lambda s: s.partes_de_cliente(7, date(2026, 9, 1), date(2026, 9, 30)),
     lambda s: s.tareas_cruce(),
 ]

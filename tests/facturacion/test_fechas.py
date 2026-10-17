@@ -12,10 +12,13 @@ from app.modulos.facturacion import fechas
 from app.modulos.facturacion.fechas import (
     fin_de_mes,
     hoy,
+    leer_dia,
     leer_mes,
     mes_siguiente,
     meses,
     mismo_mes,
+    periodo_de_linea,
+    recorte,
 )
 
 
@@ -101,3 +104,48 @@ def test_mismo_mes():
     assert mismo_mes(date(2026, 9, 1), date(2026, 9, 30))
     assert not mismo_mes(date(2026, 9, 30), date(2026, 10, 1))
     assert not mismo_mes(date(2026, 9, 1), date(2027, 9, 1))
+
+
+# ─── Días: el filtro del Resumen (spec de la E3a por grupo, decisiones 6 y 8) ─
+
+def test_leer_dia():
+    assert leer_dia("2026-07-10") == date(2026, 7, 10)
+    assert leer_dia("2028-02-29") == date(2028, 2, 29)
+
+
+@pytest.mark.parametrize("texto", [
+    "2026-07", "2026-7-10", "2026-02-30", "2026-13-01", "x", "", " 2026-07-10",
+    "2026-07-10T00:00", None,
+])
+def test_leer_dia_rechaza_lo_que_no_es_aaaa_mm_dd(texto):
+    with pytest.raises(ValueError):
+        leer_dia(texto)
+
+
+@pytest.mark.parametrize("dia, esperado", [
+    (date(2026, 7, 1), (date(2026, 7, 1), date(2026, 7, 15))),
+    (date(2026, 7, 15), (date(2026, 7, 1), date(2026, 7, 15))),
+    (date(2026, 7, 16), (date(2026, 7, 16), date(2026, 7, 31))),
+    (date(2026, 7, 31), (date(2026, 7, 16), date(2026, 7, 31))),
+    (date(2026, 2, 20), (date(2026, 2, 16), date(2026, 2, 28))),
+])
+def test_el_periodo_de_una_linea_es_su_quincena(dia, esperado):
+    assert periodo_de_linea(dia) == esperado
+
+
+def test_el_recorte_del_filtro_al_mes():
+    julio = date(2026, 7, 1)
+    assert recorte(date(2026, 7, 1), date(2026, 7, 10), julio) == (
+        date(2026, 7, 1), date(2026, 7, 10))
+    assert recorte(date(2026, 6, 20), date(2026, 8, 5), julio) == (
+        date(2026, 7, 1), date(2026, 7, 31))
+    assert recorte(date(2026, 6, 20), date(2026, 7, 10), date(2026, 6, 1)) == (
+        date(2026, 6, 20), date(2026, 6, 30))
+
+
+def test_sin_filtro_el_recorte_es_el_mes_entero():
+    assert recorte(None, None, date(2026, 2, 1)) == (date(2026, 2, 1), date(2026, 2, 28))
+
+
+def test_un_filtro_que_no_toca_el_mes_no_tiene_recorte():
+    assert recorte(date(2026, 8, 1), date(2026, 8, 31), date(2026, 7, 1)) is None

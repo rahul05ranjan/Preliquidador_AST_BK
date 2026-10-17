@@ -8,9 +8,11 @@ configuración se leen siempre frescos de la base propia. El Cruce lo hace el
 motor puro (cruce.py): acá se lee, se valida y se arma la respuesta. El
 Detalle pasa por el mismo motor con los partes del Cliente, así da los mismos
 estados que el Resumen para el mismo mes; la Revisión guarda las (grupo,
-unidad) que superaban con esos mismos datos. Hasta el filtro por día (Ticket 4
-de la spec de la E3a por grupo), el período de una Revisión es siempre el mes
-entero: se guarda así y sólo se leen las de ese período.
+unidad) que superaban con esos mismos datos. El filtro va por día (decisión 6
+de la spec de la E3a por grupo) y se recorta a cada mes: ese recorte es el
+período de cada fila, del Detalle y de la Revisión, que sólo cubre su período
+exacto (decisión 5). Sin Desde ni Hasta, el Detalle y la Revisión son del mes
+entero.
 
 La consulta del campo se recibe por parámetro, como en ComprobantesService,
 para que los tests usen una falsa. Los valores salen como Decimal y date: el
@@ -36,7 +38,7 @@ from app.modulos.facturacion.models import (
 from app.modulos.facturacion.services.consulta_externa import invalidar_cache_cruce
 from app.modulos.facturacion.services.cruce import (
     ANTES_DEL_CORTE, CERO, CON_DIFERENCIA, ESTADOS, MES_EN_CURSO,
-    PENDIENTE_DE_FACTURAR, UNIDADES, CruceMes, FilaCruce, FilaGrupo,
+    PENDIENTE_DE_FACTURAR, SIN_COMPARAR, UNIDADES, CruceMes, FilaCruce, FilaGrupo,
     LineaFacturada, cantidad_en_unidad, cruzar, cruzar_mes, medidas_por_tarea,
     tareas_sin_unidad,
 )
@@ -73,6 +75,15 @@ class MesInvalido(ErrorResumen):
     def __init__(self, campo: str):
         self.campo = campo
         super().__init__("El mes va como AAAA-MM, por ejemplo 2026-09.")
+
+
+class FechaInvalida(ErrorResumen):
+    """422 `fecha_invalida`: un Desde o un Hasta que no viene como AAAA-MM-DD
+    (filtro por día, spec de la E3a por grupo, decisión 6)."""
+
+    def __init__(self, campo: str):
+        self.campo = campo
+        super().__init__("La fecha va como AAAA-MM-DD, por ejemplo 2026-10-15.")
 
 
 class RangoInvalido(ErrorResumen):
@@ -165,9 +176,10 @@ def revisiones_vigentes(db: Session, desde: date, hasta: date,
                         cliente_id: int | None = None) -> dict:
     """La Revisión vigente de cada (Cliente, mes) entre el mes de desde y el
     de hasta: {(cliente_id, mes): RevisionDiferencia}, con sus grupos. La
-    vigente es la más reciente que nadie deshizo, entre las del mes entero
-    (las de otro período no cubren el mes, decisión 5 de la spec); una
-    deshecha no tapa a una anterior."""
+    vigente es la más reciente que nadie deshizo, entre las del período
+    exacto de ese mes: el filtro de desde a hasta recortado al mes (las de
+    otro período no lo cubren, decisión 5 de la spec). Con desde y hasta de
+    meses enteros, la del mes entero. Una deshecha no tapa a una anterior."""
     consulta = (
         select(RevisionDiferencia)
         .options(selectinload(RevisionDiferencia.grupos))
@@ -179,8 +191,7 @@ def revisiones_vigentes(db: Session, desde: date, hasta: date,
         consulta = consulta.where(RevisionDiferencia.cliente_id == cliente_id)
     vigentes: dict = {}
     for revision in db.scalars(consulta):
-        if (revision.desde, revision.hasta) == (revision.mes,
-                                                fechas.fin_de_mes(revision.mes)):
+        if (revision.desde, revision.hasta) == fechas.recorte(desde, hasta, revision.mes):
             vigentes.setdefault((revision.cliente_id, revision.mes), revision)
     return vigentes
 
@@ -210,6 +221,28 @@ def _leer_mes(texto, campo: str) -> date:
         return fechas.leer_mes(texto)
     except ValueError:
         raise MesInvalido(campo) from None
+
+
+def _leer_dia(texto, campo: str) -> date:
+    try:
+        return fechas.leer_dia(texto)
+    except ValueError:
+        raise FechaInvalida(campo) from None
+
+
+def _corte(mes: str, desde: str | None, hasta: str | None) -> tuple[date, tuple[date, date]]:
+    """El mes del Detalle o de la Revisión ("AAAA-MM") y su período: Desde y
+    Hasta ("AAAA-MM-DD", opcionales) recortados a ese mes, como la fila del
+    Resumen; sin ellos, el mes entero. Valida en ese orden, antes de leer."""
+    inicio = _leer_mes(mes, "mes")
+    dia_desde = None if desde is None else _leer_dia(desde, "desde")
+    dia_hasta = None if hasta is None else _leer_dia(hasta, "hasta")
+    if dia_desde is not None and dia_hasta is not None and dia_hasta < dia_desde:
+        raise RangoInvalido("hasta", "La fecha final no puede ser anterior a la inicial.")
+    corte = fechas.recorte(dia_desde, dia_hasta, inicio)
+    if corte is None:
+        raise RangoInvalido("desde", "El período elegido no toca este mes.")
+    return inicio, corte
 
 
 def mes_en_curso() -> date:
@@ -268,16 +301,18 @@ class ResumenService:
     # ─── Resumen (ruta 13) ──────────────────────────────────────────────────
 
     def resumen(self, desde: str, hasta: str, refrescar: bool = False) -> dict:
-        """El Resumen de los meses de desde a hasta ("AAAA-MM", los dos
-        incluidos): {umbral_pct, mes_corte, mes_en_curso, leido_en, filas,
-        tareas_sin_unidad, actualizado_en, actualizado_por_nombre}.
+        """El Resumen de desde a hasta ("AAAA-MM-DD", los dos incluidos):
+        {umbral_pct, mes_corte, mes_en_curso, leido_en, filas,
+        tareas_sin_unidad, actualizado_en, actualizado_por_nombre}. Una fila
+        por Cliente y mes, cada una con el filtro recortado a su mes
+        (decisión 6 de la spec de la E3a por grupo).
 
         El rango se valida antes de leer el campo. Con refrescar, la caché del
         Cruce se vacía antes de leer ("Volver a leer"). `leido_en` es la más
         vieja de las dos lecturas del campo (lo trabajado y el maestro): la
         pantalla no muestra nada más nuevo que eso."""
-        inicio = _leer_mes(desde, "desde")
-        fin = _leer_mes(hasta, "hasta")
+        inicio = _leer_dia(desde, "desde")
+        fin = _leer_dia(hasta, "hasta")
         en_curso = mes_en_curso()
         _validar_rango(inicio, fin, en_curso)
 
@@ -291,7 +326,8 @@ class ResumenService:
             trabajado["filas"], leer_lineas(self.db, inicio, fin), tareas["filas"],
             umbral_pct=configuracion["umbral_pct"],
             mes_corte=configuracion["mes_corte"], mes_en_curso=en_curso,
-            revisiones=revisadas(revisiones_vigentes(self.db, inicio, fin)))
+            revisiones=revisadas(revisiones_vigentes(self.db, inicio, fin)),
+            desde=inicio, hasta=fin)
         visibles = [c for c in cruces if se_muestra(c)]
         nombres = self.nombres_de_clientes({c.cliente_id for c in visibles})
 
@@ -312,24 +348,27 @@ class ResumenService:
 
     # ─── Detalle (ruta 14) ──────────────────────────────────────────────────
 
-    def detalle(self, cliente_id: int, mes: str, refrescar: bool = False) -> dict:
-        """El Detalle de un Cliente en un mes ("AAAA-MM"): el Cruce tarea por
-        tarea con sus partes, los pesos, los Comprobantes del mes y la
-        Revisión vigente (ruta 14).
+    def detalle(self, cliente_id: int, mes: str, refrescar: bool = False,
+                desde: str | None = None, hasta: str | None = None) -> dict:
+        """El Detalle de un Cliente en un mes ("AAAA-MM"): el Cruce por
+        (grupo, unidad) con sus tareas y sus partes, los pesos, los
+        Comprobantes y la Revisión vigente (ruta 14). Con Desde y Hasta
+        ("AAAA-MM-DD"), del período recortado al mes, como la fila del
+        Resumen; sin ellos, del mes entero.
 
-        El mes se valida antes de leer nada, y el 404 (un Cliente que no está
+        El mes y el período se validan antes de leer nada, y el 404 (un Cliente que no está
         en el maestro, con las bajas, ni tiene ningún Comprobante) se decide
         antes de leer los partes. Con refrescar, la caché del Cruce se vacía
         antes de leer. `leido_en` es la más vieja de las dos lecturas del
         campo, como en el Resumen."""
-        inicio = _leer_mes(mes, "mes")
+        inicio, corte = _corte(mes, desde, hasta)
         if refrescar:
             invalidar_cache_cruce()
         nombres = self.nombres_de_clientes({cliente_id})
         if cliente_id not in nombres:
             raise ClienteNoEncontrado()
 
-        datos = self.datos_del_mes(cliente_id, inicio)
+        datos = self.datos_del_mes(cliente_id, inicio, corte)
         cruce = datos.cruce
         precios = _precios(cruce, precios_sugeridos(self.db, cliente_id))
         configuracion = datos.configuracion
@@ -337,36 +376,43 @@ class ResumenService:
             "cliente_id": cliente_id,
             "cliente_nombre": nombres[cliente_id],
             "mes": inicio,
+            "desde": cruce.desde,
+            "hasta": cruce.hasta,
             "umbral_pct": configuracion["umbral_pct"],
             "mes_corte": configuracion["mes_corte"],
             "leido_en": datos.leido_en,
             "estados": list(cruce.estados),
             "diferencia_revisada": cruce.diferencia_revisada,
             "se_puede_revisar": CON_DIFERENCIA in cruce.estados,
-            "comprobantes": _comprobantes(datos.lineas),
+            "comprobantes": _comprobantes(datos.lineas, corte),
             "grupos": _grupos(cruce, datos.partes, precios),
             "total": _total(cruce, precios),
             "revision": self._revision(datos.vigente),
         }
 
-    def datos_del_mes(self, cliente_id: int, mes: date) -> "DatosDelMes":
+    def datos_del_mes(self, cliente_id: int, mes: date,
+                      corte: tuple[date, date] | None = None) -> "DatosDelMes":
         """Lee el campo y la base propia de un Cliente en un mes y los pasa
-        por el motor, igual que el Resumen: los partes del mes (con caché),
-        el maestro de tareas (con caché), lo facturado y la Revisión vigente
-        (frescos). Lo usan el Detalle y la Revisión, que así ven el mismo
-        Cruce."""
+        por el motor, igual que el Resumen: los partes del período (con
+        caché), el maestro de tareas (con caché), lo facturado del mes y la
+        Revisión vigente del período (frescos). `corte` es el período, ya
+        recortado al mes; sin él, el mes entero. Lo usan el Detalle y la
+        Revisión, que así ven el mismo Cruce."""
+        desde, hasta = corte or (mes, fechas.fin_de_mes(mes))
         configuracion = self.configuracion()
-        partes = self.consulta.partes_de_cliente(cliente_id, mes, fechas.fin_de_mes(mes))
+        partes = self.consulta.partes_de_cliente(cliente_id, desde, hasta)
         tareas = self.consulta.tareas_cruce()
         lineas = leer_lineas(self.db, mes, mes, cliente_id)
-        vigente = revisiones_vigentes(self.db, mes, mes, cliente_id).get((cliente_id, mes))
+        vigente = revisiones_vigentes(self.db, desde, hasta, cliente_id).get(
+            (cliente_id, mes))
         cruce = cruzar_mes(
             cliente_id=cliente_id, mes=mes,
             trabajado=medidas_por_tarea(partes["filas"]),
             lineas=lineas, tareas=tareas["filas"],
             umbral_pct=configuracion["umbral_pct"],
             mes_corte=configuracion["mes_corte"], mes_en_curso=mes_en_curso(),
-            revisadas=None if vigente is None else grupos_revisados(vigente))
+            revisadas=None if vigente is None else grupos_revisados(vigente),
+            desde=desde, hasta=hasta)
 
         return DatosDelMes(
             configuracion=configuracion,
@@ -380,52 +426,52 @@ class ResumenService:
     # ─── Revisión de diferencia (rutas 15 y 16) ─────────────────────────────
 
     def revisar(self, cliente_id: int, mes: str, comentario: str | None,
-                usuario_id: int | None) -> dict:
+                usuario_id: int | None, desde: str | None = None,
+                hasta: str | None = None) -> dict:
         """Deja una Revisión de diferencia en un Cliente y mes ("AAAA-MM") y
-        devuelve el Detalle (ruta 15).
+        devuelve el Detalle (ruta 15). Desde y Hasta, como en el Detalle.
 
         El comentario se recorta en los bordes antes de medirlo, como en el
         front, y se guarda recortado. Sólo se revisa un mes Con diferencia;
         cualquier otro da NoRevisable. Guarda quién, cuándo, el período (el
-        mes entero) y las (grupo, unidad) que superaban, calculadas con
+        filtro recortado al mes) y las (grupo, unidad) que superaban, calculadas con
         datos_del_mes: el mismo Cruce, con la misma caché del campo, que vio
         el Detalle, y en el orden de sus líneas. Una Revisión anterior no se
         toca: la nueva pasa a ser la vigente por ser la más reciente."""
-        inicio = _leer_mes(mes, "mes")
+        inicio, corte = _corte(mes, desde, hasta)
         texto = _leer_comentario(comentario)
         self._validar_cliente(cliente_id)
 
-        cruce = self.datos_del_mes(cliente_id, inicio).cruce
+        cruce = self.datos_del_mes(cliente_id, inicio, corte).cruce
         if CON_DIFERENCIA not in cruce.estados:
             raise NoRevisable(_por_que_no_se_revisa(cruce))
 
         self.db.add(RevisionDiferencia(
-            cliente_id=cliente_id, mes=inicio,
-            desde=inicio, hasta=fechas.fin_de_mes(inicio),
+            cliente_id=cliente_id, mes=inicio, desde=corte[0], hasta=corte[1],
             comentario=texto, creada_en=ahora_utc(), creada_por=usuario_id,
             grupos=[RevisionGrupo(grupo=g.grupo, unidad=g.unidad)
                     for g in cruce.grupos if g.supera]))
         self.db.commit()
-        return self.detalle(cliente_id, mes)
+        return self.detalle(cliente_id, mes, desde=desde, hasta=hasta)
 
-    def deshacer_revision(self, cliente_id: int, mes: str,
-                          usuario_id: int | None) -> dict:
-        """Deshace la Revisión vigente de un Cliente y mes ("AAAA-MM") y
-        devuelve el Detalle (ruta 16). No la borra: sella `deshecha_en` y
+    def deshacer_revision(self, cliente_id: int, mes: str, usuario_id: int | None,
+                          desde: str | None = None, hasta: str | None = None) -> dict:
+        """Deshace la Revisión vigente de un Cliente y mes ("AAAA-MM"), la de
+        su período exacto (Desde y Hasta, como en el Detalle), y devuelve el
+        Detalle (ruta 16). No la borra: sella `deshecha_en` y
         `deshecha_por`, y queda en el registro. Sin una vigente, SinRevision.
         No mira el estado del mes: se deshace aunque el Admin haya movido el
         corte después."""
-        inicio = _leer_mes(mes, "mes")
+        inicio, corte = _corte(mes, desde, hasta)
         self._validar_cliente(cliente_id)
 
-        vigente = revisiones_vigentes(self.db, inicio, inicio, cliente_id).get(
-            (cliente_id, inicio))
+        vigente = revisiones_vigentes(self.db, *corte, cliente_id).get((cliente_id, inicio))
         if vigente is None:
             raise SinRevision()
         vigente.deshecha_en = ahora_utc()
         vigente.deshecha_por = usuario_id
         self.db.commit()
-        return self.detalle(cliente_id, mes)
+        return self.detalle(cliente_id, mes, desde=desde, hasta=hasta)
 
     def _validar_cliente(self, cliente_id: int) -> None:
         """El 404 del Detalle (ruta 14), antes de leer los partes."""
@@ -501,6 +547,9 @@ def _por_que_no_se_revisa(cruce: CruceMes) -> str:
         return "El mes es anterior al Mes de corte: no se controla."
     if MES_EN_CURSO in cruce.estados:
         return "El mes todavía no terminó: se controla cuando termine."
+    if SIN_COMPARAR in cruce.estados:
+        return ("Ningún grupo se puede comparar en este período: no hay diferencia "
+                "que revisar.")
     if PENDIENTE_DE_FACTURAR in cruce.estados:
         return "El mes no tiene nada facturado: falta cargar la factura, no revisarla."
     if cruce.diferencia_revisada:
@@ -509,23 +558,23 @@ def _por_que_no_se_revisa(cruce: CruceMes) -> str:
 
 
 def _validar_rango(desde: date, hasta: date, en_curso: date) -> None:
-    """Hasta MESES_MAXIMOS meses, desde no posterior a hasta, y sin pasar el
-    mes en curso. Va antes de fechas.meses(), que con el rango invertido
-    devuelve vacío sin avisar."""
+    """Por día: desde no posterior a hasta, hasta MESES_MAXIMOS meses tocados
+    y sin pasar el fin del mes en curso. Va antes de fechas.meses(), que con
+    el rango invertido devuelve vacío sin avisar."""
     if hasta < desde:
-        raise RangoInvalido("hasta", "El mes final no puede ser anterior al inicial.")
+        raise RangoInvalido("hasta", "La fecha final no puede ser anterior a la inicial.")
     if len(fechas.meses(desde, hasta)) > MESES_MAXIMOS:
         raise RangoInvalido(
             "desde", f"El Resumen muestra hasta {MESES_MAXIMOS} meses de una vez.")
-    if hasta > en_curso:
-        raise RangoInvalido("hasta", "El mes final no puede pasar del mes en curso.")
+    if hasta > fechas.fin_de_mes(en_curso):
+        raise RangoInvalido("hasta", "La fecha final no puede pasar del mes en curso.")
 
 
 @dataclass
 class DatosDelMes:
     """Lo que el Detalle y la Revisión leen de un Cliente en un mes, ya
     cruzado. `lineas` son todas las del mes, también las que no cuentan en el
-    Cruce; `partes`, las filas del campo tal como vienen de la caché (no se
+    Cruce o caen fuera del período; `partes`, las filas del campo tal como vienen de la caché (no se
     modifican)."""
     configuracion: dict
     leido_en: datetime
@@ -541,8 +590,8 @@ def _orden_unidad(unidad: str | None) -> int:
 
 def _precios(cruce: CruceMes, sugeridos: dict) -> dict:
     """El precio de cada (tarea, unidad) del Cruce (decisión 6, pesos del
-    Detalle): el precio medio de las Facturas del mes que cuentan
-    (Σimporte / Σcantidad) y, si no hay, el Precio sugerido. Una fila sin
+    Detalle): el precio medio de las Líneas de Factura que cuentan en el
+    período (Σimporte / Σcantidad) y, si no hay, el Precio sugerido. Una fila sin
     unidad o sin ninguno de los dos no figura: queda sin valorizar.
 
     Si el precio medio del mes da 0 o menos, la fila tampoco figura y no cae
@@ -569,11 +618,16 @@ def _precios(cruce: CruceMes, sugeridos: dict) -> dict:
     return precios
 
 
-def _comprobantes(lineas: list[LineaFacturada]) -> list[dict]:
-    """Todos los Comprobantes con alguna Línea en el mes, también los que no
-    cuentan en el Cruce, por id."""
+def _comprobantes(lineas: list[LineaFacturada], corte: tuple[date, date]) -> list[dict]:
+    """Todos los Comprobantes con alguna Línea cuyo período toca el del
+    Detalle (entera o en parte), también los que no cuentan en el Cruce, por
+    id. Con el mes entero, todos los que tienen una Línea en el mes."""
+    desde, hasta = corte
     por_id = {}
     for linea in lineas:
+        inicio, fin = linea.periodo
+        if fin < desde or inicio > hasta:
+            continue
         por_id.setdefault(linea.comprobante_id, {
             "id": linea.comprobante_id, "tipo": linea.tipo, "numero": linea.numero,
             "cantidad_adjuntos": linea.cantidad_adjuntos,
@@ -650,20 +704,26 @@ def _linea(grupo: FilaGrupo) -> dict:
         "diferencia": grupo.diferencia,
         "diferencia_pct": grupo.diferencia_pct,
         "supera": grupo.supera,
+        "fuera_del_filtro": grupo.fuera_del_filtro,
     }
 
 
 def _fila(cruce: CruceMes, cliente_nombre: str | None) -> dict:
-    """Una fila del Resumen (ruta 13): las líneas (grupo, unidad) en el orden
-    del motor, cuántas superan (decisión 2 de la spec: cuenta líneas, no
-    grupos) y el Estado del mes. Sólo cantidades: sin pesos ni TOTAL."""
+    """Una fila del Resumen (ruta 13): su período (el filtro recortado al
+    mes), las líneas (grupo, unidad) en el orden del motor, cuántas superan
+    (decisión 2 de la spec: cuenta líneas, no grupos), el Estado del mes y los
+    Comprobantes que caen en parte afuera del período (decisión 7). Sólo
+    cantidades: sin pesos ni TOTAL."""
     return {
         "cliente_id": cruce.cliente_id,
         "cliente_nombre": cliente_nombre,
         "mes": cruce.mes,
+        "desde": cruce.desde,
+        "hasta": cruce.hasta,
         "grupos": [_linea(g) for g in cruce.grupos],
         "lineas_superan": len(cruce.superan),
         "estados": list(cruce.estados),
         "diferencia_revisada": cruce.diferencia_revisada,
         "comprobantes_sin_adjunto": list(cruce.comprobantes_sin_adjunto),
+        "comprobantes_fuera": list(cruce.comprobantes_fuera),
     }

@@ -142,13 +142,14 @@ class TareaCampo(BaseModel):
 
 # ═══ Resumen, Detalle, Revisión y configuración (E3, rutas 13 a 17) ═════════
 # Espejo de los dicts de ResumenService. El servicio da los meses como el día
-# 1 (`date`); acá salen como "AAAA-MM".
+# 1 (`date`); acá salen como "AAAA-MM". Los días del filtro salen como
+# "AAAA-MM-DD".
 
 Mes = Annotated[date, PlainSerializer(lambda mes: mes.strftime("%Y-%m"), return_type=str)]
 
 # Las claves de estado del mes (decisión 6), en orden de urgencia.
 EstadoMes = Literal["pendiente_de_facturar", "con_diferencia", "falta_comprobante",
-                    "facturada", "mes_en_curso", "antes_del_corte"]
+                    "sin_comparar", "facturada", "mes_en_curso", "antes_del_corte"]
 
 
 class ComprobanteSinAdjunto(BaseModel):
@@ -156,6 +157,16 @@ class ComprobanteSinAdjunto(BaseModel):
     id: int
     tipo: str
     numero: str | None = None
+
+
+class ComprobanteFuera(BaseModel):
+    """Un Comprobante con alguna Línea que cae en parte afuera del filtro, y
+    el período de esas Líneas (los dos días incluidos)."""
+    id: int
+    tipo: str
+    numero: str | None = None
+    desde: date
+    hasta: date
 
 
 class LineaResumen(BaseModel):
@@ -174,6 +185,9 @@ class LineaResumen(BaseModel):
     diferencia_pct: Decimal | None = None
     # Sólo en los meses que se controlan; en los meses en gris, False.
     supera: bool
+    # Alguna Línea del grupo cae en parte afuera del filtro: no se compara
+    # (diferencia, % y "supera" van vacíos).
+    fuera_del_filtro: bool = False
 
 
 class FilaResumen(BaseModel):
@@ -182,6 +196,9 @@ class FilaResumen(BaseModel):
     # None sólo si el Cliente no está en el maestro ni tiene Comprobantes.
     cliente_nombre: str | None = None
     mes: Mes
+    # El filtro recortado al mes, los dos días incluidos.
+    desde: date
+    hasta: date
     # Las líneas (grupo, unidad): por grupo, "Sin grupo" al final, y por
     # unidad.
     grupos: list[LineaResumen]
@@ -191,6 +208,8 @@ class FilaResumen(BaseModel):
     estados: list[EstadoMes]
     diferencia_revisada: bool
     comprobantes_sin_adjunto: list[ComprobanteSinAdjunto] = []
+    # Para el aviso de lo que no entra en el filtro.
+    comprobantes_fuera: list[ComprobanteFuera] = []
 
 
 class TareaSinUnidad(BaseModel):
@@ -217,7 +236,8 @@ class Resumen(BaseModel):
 
 
 class ComprobanteDelMes(BaseModel):
-    """Un Comprobante con alguna Línea en el mes, cuente o no en el Cruce."""
+    """Un Comprobante con alguna Línea cuyo período toca el del Detalle,
+    cuente o no en el Cruce."""
     id: int
     tipo: str
     numero: str | None = None
@@ -280,8 +300,8 @@ class RevisionSalida(BaseModel):
     """La Revisión de diferencia vigente del mes."""
     id: int
     comentario: str
-    # El período que cubre, los dos días incluidos y dentro del mes; hasta el
-    # filtro por día (Ticket 4 de la spec de la E3a por grupo), el mes entero.
+    # El período que cubre, los dos días incluidos y dentro del mes: el
+    # filtro recortado al mes cuando se dejó.
     desde: date
     hasta: date
     creada_en: datetime
@@ -296,6 +316,10 @@ class DetalleResumen(BaseModel):
     cliente_id: int
     cliente_nombre: str | None = None
     mes: Mes
+    # El período del Detalle: el filtro recortado al mes (sin filtro, el mes
+    # entero), los dos días incluidos.
+    desde: date
+    hasta: date
     umbral_pct: Decimal
     mes_corte: Mes
     leido_en: datetime

@@ -4,8 +4,8 @@ configuración (plan de la E3, sección 3.2, rutas 13 a 17; paso A10).
 Las reglas ya están probadas en test_resumen_service, test_detalle y
 test_revision. Acá se prueba lo que agrega la capa HTTP: quién entra a qué,
 los códigos y el `detail` de cada error del contrato, y cómo sale el cuerpo
-(los decimales como texto, los meses como "AAAA-MM" y sólo las claves del
-contrato). Primero con un servicio doble, sin base ni red; al final, con el
+(los decimales como texto, los meses como "AAAA-MM", los días del filtro como
+"AAAA-MM-DD" y sólo las claves del contrato). Primero con un servicio doble, sin base ni red; al final, con el
 servicio de verdad sobre SQLite y la consulta del campo falsa del Detalle.
 
 Hoy es el 10 de noviembre de 2026: noviembre es el mes en curso y, con el
@@ -30,7 +30,7 @@ from app.modulos.facturacion.api import comprobantes as api_comprobantes
 from app.modulos.facturacion.api import resumen as api
 from app.modulos.facturacion.services import consulta_externa
 from app.modulos.facturacion.services.resumen_service import (
-    ClienteNoEncontrado, ConfiguracionInvalida, MesInvalido, NoRevisable,
+    ClienteNoEncontrado, ConfiguracionInvalida, FechaInvalida, MesInvalido, NoRevisable,
     RangoInvalido, ResumenService, RevisionInvalida, SinRevision,
 )
 from tests.facturacion import test_detalle as detalle_a8
@@ -45,7 +45,7 @@ D = Decimal
 LINEA = {
     "grupo": "MANUALES", "unidad": "horas_peon", "campo": D("120.50"),
     "facturado": D("130"), "diferencia": D("9.50"), "diferencia_pct": D("7.88"),
-    "supera": True, "sobra": "no va",
+    "supera": True, "fuera_del_filtro": False, "sobra": "no va",
 }
 # Facturado sin campo: sin unidad de medida del campo, sin diferencia ni %.
 LINEA_SIN_CAMPO = {
@@ -53,12 +53,22 @@ LINEA_SIN_CAMPO = {
     "facturado": D("4.25"), "diferencia": D("4.25"), "diferencia_pct": None,
     "supera": True,
 }
+# Una Línea cae en parte afuera del filtro: sin diferencia, ni %, ni supera.
+LINEA_FUERA = {
+    "grupo": "MAQUINARIA", "unidad": "horas_tractor", "campo": D("8"),
+    "facturado": D("0"), "diferencia": None, "diferencia_pct": None,
+    "supera": False, "fuera_del_filtro": True,
+}
 FILA = {
     "cliente_id": 12, "cliente_nombre": "CLIENTE UNO", "mes": date(2026, 10, 1),
-    "grupos": [LINEA, LINEA_SIN_CAMPO], "lineas_superan": 2,
+    "desde": date(2026, 10, 1), "hasta": date(2026, 10, 10),
+    "grupos": [LINEA, LINEA_SIN_CAMPO, LINEA_FUERA], "lineas_superan": 2,
     "estados": ["con_diferencia", "falta_comprobante"],
     "diferencia_revisada": False,
     "comprobantes_sin_adjunto": [{"id": 5, "tipo": "factura", "numero": "A 0001"}],
+    "comprobantes_fuera": [{"id": 6, "tipo": "factura", "numero": "A 0002",
+                            "desde": date(2026, 10, 1), "hasta": date(2026, 10, 15),
+                            "sobra": "no va"}],
     "sobra": "no va",
 }
 RESUMEN = {
@@ -96,6 +106,7 @@ SIN_UNIDAD_DETALLE = {
 }
 DETALLE = {
     "cliente_id": 12, "cliente_nombre": "CLIENTE UNO", "mes": date(2026, 10, 1),
+    "desde": date(2026, 10, 1), "hasta": date(2026, 10, 15),
     "umbral_pct": D("5.00"), "mes_corte": date(2026, 10, 1),
     "leido_en": datetime(2026, 11, 10, 13, 30),
     "estados": ["facturada"], "diferencia_revisada": True, "se_puede_revisar": False,
@@ -121,11 +132,14 @@ CONFIGURACION = {
 # Las claves de cada respuesta, copiadas de la sección 3.2 del plan.
 CLAVES_RESUMEN = {"umbral_pct", "mes_corte", "mes_en_curso", "leido_en", "filas",
                   "tareas_sin_unidad", "actualizado_en", "actualizado_por_nombre"}
-CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "grupos", "lineas_superan",
-               "estados", "diferencia_revisada", "comprobantes_sin_adjunto"}
+CLAVES_FILA = {"cliente_id", "cliente_nombre", "mes", "desde", "hasta", "grupos",
+               "lineas_superan", "estados", "diferencia_revisada",
+               "comprobantes_sin_adjunto", "comprobantes_fuera"}
 CLAVES_LINEA = {"grupo", "unidad", "campo", "facturado", "diferencia", "diferencia_pct",
-                "supera"}
-CLAVES_DETALLE = {"cliente_id", "cliente_nombre", "mes", "umbral_pct", "mes_corte",
+                "supera", "fuera_del_filtro"}
+CLAVES_COMPROBANTE_FUERA = {"id", "tipo", "numero", "desde", "hasta"}
+CLAVES_DETALLE = {"cliente_id", "cliente_nombre", "mes", "desde", "hasta",
+                  "umbral_pct", "mes_corte",
                   "leido_en", "estados", "diferencia_revisada", "se_puede_revisar",
                   "comprobantes", "grupos", "total", "revision"}
 CLAVES_GRUPO_DETALLE = CLAVES_LINEA | {"tareas"}
@@ -156,16 +170,16 @@ class ServicioFalso:
         self._anotar("resumen", desde, hasta, refrescar)
         return RESUMEN
 
-    def detalle(self, cliente_id, mes, refrescar=False):
-        self._anotar("detalle", cliente_id, mes, refrescar)
+    def detalle(self, cliente_id, mes, refrescar=False, desde=None, hasta=None):
+        self._anotar("detalle", cliente_id, mes, refrescar, desde, hasta)
         return DETALLE
 
-    def revisar(self, cliente_id, mes, comentario, usuario_id):
-        self._anotar("revisar", cliente_id, mes, comentario, usuario_id)
+    def revisar(self, cliente_id, mes, comentario, usuario_id, desde=None, hasta=None):
+        self._anotar("revisar", cliente_id, mes, comentario, usuario_id, desde, hasta)
         return DETALLE
 
-    def deshacer_revision(self, cliente_id, mes, usuario_id):
-        self._anotar("deshacer", cliente_id, mes, usuario_id)
+    def deshacer_revision(self, cliente_id, mes, usuario_id, desde=None, hasta=None):
+        self._anotar("deshacer", cliente_id, mes, usuario_id, desde, hasta)
         return DETALLE
 
     def cambiar_configuracion(self, umbral_pct, mes_corte, usuario_id):
@@ -193,7 +207,7 @@ ADMIN = SimpleNamespace(id=1, nombre="A", email="a@t.com", rol="admin",
 CONFIG_ENTRADA = {"umbral_pct": "7.5", "mes_corte": "2026-09"}
 
 # Las cinco rutas: (método, ruta, cuerpo).
-RESUMEN_GET = ("GET", "/resumen?desde=2026-09&hasta=2026-10", None)
+RESUMEN_GET = ("GET", "/resumen?desde=2026-09-01&hasta=2026-10-31", None)
 DETALLE_GET = ("GET", "/resumen/12/2026-10", None)
 REVISAR = ("POST", "/resumen/12/2026-10/revision", {"comentario": "Explicada."})
 DESHACER = ("DELETE", "/resumen/12/2026-10/revision", None)
@@ -238,7 +252,8 @@ def _pedir(c, metodo, ruta, cuerpo):
 def test_el_resumen_sale_con_la_forma_del_contrato():
     servicio = ServicioFalso()
     r = _cliente(servicio=servicio).get(
-        f"{F}/resumen", params={"desde": "2026-09", "hasta": "2026-10", "refrescar": "true"})
+        f"{F}/resumen",
+        params={"desde": "2026-09-16", "hasta": "2026-10-10", "refrescar": "true"})
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert set(cuerpo) == CLAVES_RESUMEN
@@ -253,25 +268,35 @@ def test_el_resumen_sale_con_la_forma_del_contrato():
     fila = cuerpo["filas"][0]
     assert set(fila) == CLAVES_FILA
     assert fila["mes"] == "2026-10"
+    # El período de la fila, en días: el filtro recortado al mes.
+    assert (fila["desde"], fila["hasta"]) == ("2026-10-01", "2026-10-10")
     # Las líneas (grupo, unidad), con los decimales como texto y sin pesos.
     assert fila["lineas_superan"] == 2
-    assert [set(l) for l in fila["grupos"]] == [CLAVES_LINEA, CLAVES_LINEA]
+    assert [set(l) for l in fila["grupos"]] == [CLAVES_LINEA] * 3
     assert fila["grupos"][0] == {
         "grupo": "MANUALES", "unidad": "horas_peon", "campo": "120.50",
         "facturado": "130", "diferencia": "9.50", "diferencia_pct": "7.88",
-        "supera": True}
-    # Facturado sin campo: el % en raya (null).
+        "supera": True, "fuera_del_filtro": False}
+    # Facturado sin campo: el % en raya (null); sin la clave, no está fuera.
     assert fila["grupos"][1]["diferencia_pct"] is None
+    assert fila["grupos"][1]["fuera_del_filtro"] is False
+    assert fila["grupos"][2] == {
+        "grupo": "MAQUINARIA", "unidad": "horas_tractor", "campo": "8",
+        "facturado": "0", "diferencia": None, "diferencia_pct": None,
+        "supera": False, "fuera_del_filtro": True}
     assert fila["estados"] == ["con_diferencia", "falta_comprobante"]
     assert fila["comprobantes_sin_adjunto"] == [{"id": 5, "tipo": "factura", "numero": "A 0001"}]
-    assert servicio.llamadas == [("resumen", "2026-09", "2026-10", True)]
+    assert fila["comprobantes_fuera"] == [
+        {"id": 6, "tipo": "factura", "numero": "A 0002",
+         "desde": "2026-10-01", "hasta": "2026-10-15"}]
+    assert servicio.llamadas == [("resumen", "2026-09-16", "2026-10-10", True)]
 
 
 def test_sin_refrescar_el_resumen_usa_la_cache():
     servicio = ServicioFalso()
-    r = _cliente(servicio=servicio).get(f"{F}/resumen?desde=2026-09&hasta=2026-10")
+    r = _cliente(servicio=servicio).get(f"{F}/resumen?desde=2026-09-01&hasta=2026-10-31")
     assert r.status_code == 200
-    assert servicio.llamadas == [("resumen", "2026-09", "2026-10", False)]
+    assert servicio.llamadas == [("resumen", "2026-09-01", "2026-10-31", False)]
 
 
 def test_el_detalle_sale_con_la_forma_del_contrato():
@@ -281,6 +306,7 @@ def test_el_detalle_sale_con_la_forma_del_contrato():
     cuerpo = r.json()
     assert set(cuerpo) == CLAVES_DETALLE
     assert cuerpo["mes"] == "2026-10"
+    assert (cuerpo["desde"], cuerpo["hasta"]) == ("2026-10-01", "2026-10-15")
     assert cuerpo["mes_corte"] == "2026-10"
     assert cuerpo["umbral_pct"] == "5.00"
     assert cuerpo["comprobantes"] == [{"id": 5, "tipo": "factura", "numero": "A 0001",
@@ -316,7 +342,7 @@ def test_el_detalle_sale_con_la_forma_del_contrato():
     assert (cuerpo["revision"]["desde"], cuerpo["revision"]["hasta"]) == (
         "2026-10-01", "2026-10-31")
     assert cuerpo["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
-    assert servicio.llamadas == [("detalle", 12, "2026-10", True)]
+    assert servicio.llamadas == [("detalle", 12, "2026-10", True, None, None)]
 
 
 def test_dejar_una_revision_responde_201_con_el_detalle_y_sella_quien():
@@ -325,7 +351,7 @@ def test_dejar_una_revision_responde_201_con_el_detalle_y_sella_quien():
                                          json={"comentario": "Explicada."})
     assert r.status_code == 201, r.text
     assert set(r.json()) == CLAVES_DETALLE
-    assert servicio.llamadas == [("revisar", 12, "2026-10", "Explicada.", 42)]
+    assert servicio.llamadas == [("revisar", 12, "2026-10", "Explicada.", 42, None, None)]
 
 
 def test_una_revision_sin_comentario_llega_al_servicio_que_decide():
@@ -334,7 +360,7 @@ def test_una_revision_sin_comentario_llega_al_servicio_que_decide():
     servicio = ServicioFalso()
     r = _cliente(servicio=servicio).post(f"{F}/resumen/12/2026-10/revision", json={})
     assert r.status_code == 201
-    assert servicio.llamadas == [("revisar", 12, "2026-10", None, 42)]
+    assert servicio.llamadas == [("revisar", 12, "2026-10", None, 42, None, None)]
 
 
 def test_deshacer_responde_200_con_el_detalle_y_sella_quien():
@@ -342,7 +368,22 @@ def test_deshacer_responde_200_con_el_detalle_y_sella_quien():
     r = _cliente(servicio=servicio).delete(f"{F}/resumen/12/2026-10/revision")
     assert r.status_code == 200, r.text
     assert set(r.json()) == CLAVES_DETALLE
-    assert servicio.llamadas == [("deshacer", 12, "2026-10", 42)]
+    assert servicio.llamadas == [("deshacer", 12, "2026-10", 42, None, None)]
+
+
+def test_el_detalle_y_la_revision_pasan_desde_y_hasta_al_servicio():
+    servicio = ServicioFalso()
+    c = _cliente(servicio=servicio)
+    periodo = "desde=2026-10-01&hasta=2026-10-15"
+    assert c.get(f"{F}/resumen/12/2026-10?{periodo}").status_code == 200
+    assert c.post(f"{F}/resumen/12/2026-10/revision?{periodo}",
+                  json={"comentario": "Explicada."}).status_code == 201
+    assert c.delete(f"{F}/resumen/12/2026-10/revision?{periodo}").status_code == 200
+    assert servicio.llamadas == [
+        ("detalle", 12, "2026-10", False, "2026-10-01", "2026-10-15"),
+        ("revisar", 12, "2026-10", "Explicada.", 42, "2026-10-01", "2026-10-15"),
+        ("deshacer", 12, "2026-10", 42, "2026-10-01", "2026-10-15"),
+    ]
 
 
 def test_la_configuracion_responde_200_con_quien_y_cuando():
@@ -361,7 +402,7 @@ def test_la_configuracion_responde_200_con_quien_y_cuando():
 def test_si_el_campo_no_responde_es_503():
     """Lo traduce app/main.py; acá sólo se mira que la excepción llegue."""
     servicio = ServicioFalso(error=ExternaNoDisponible("El sistema de campo no respondió."))
-    r = _cliente(servicio=servicio).get(f"{F}/resumen?desde=2026-09&hasta=2026-10")
+    r = _cliente(servicio=servicio).get(f"{F}/resumen?desde=2026-09-01&hasta=2026-10-31")
     assert r.status_code == 503
     assert r.json()["detail"] == "El sistema de campo no respondió."
 
@@ -369,11 +410,14 @@ def test_si_el_campo_no_responde_es_503():
 # ─── Los errores del contrato ───────────────────────────────────────────────
 
 ERRORES = [
-    (RESUMEN_GET, MesInvalido("desde"), 422,
-     {"tipo": "mes_invalido", "campo": "desde"}),
-    (RESUMEN_GET, RangoInvalido("hasta", "El mes final no puede pasar del mes en curso."),
+    (RESUMEN_GET, FechaInvalida("desde"), 422,
+     {"tipo": "fecha_invalida", "campo": "desde"}),
+    (RESUMEN_GET, RangoInvalido("hasta", "La fecha final no puede pasar del mes en curso."),
      422, {"tipo": "rango_invalido", "campo": "hasta"}),
     (DETALLE_GET, MesInvalido("mes"), 422, {"tipo": "mes_invalido", "campo": "mes"}),
+    (DETALLE_GET, FechaInvalida("hasta"), 422, {"tipo": "fecha_invalida", "campo": "hasta"}),
+    (REVISAR, RangoInvalido("desde", "El período elegido no toca este mes."), 422,
+     {"tipo": "rango_invalido", "campo": "desde"}),
     (REVISAR, RevisionInvalida("Falta el comentario."), 422,
      {"tipo": "revision_invalida", "campo": "comentario"}),
     (REVISAR, NoRevisable("Ningún grupo supera el Umbral."), 409,
@@ -502,7 +546,7 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     _con_diferencia(real)
     c = real.c
 
-    r = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10")
+    r = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-31")
     assert r.status_code == 200, r.text
     resumen = r.json()
     assert set(resumen) == CLAVES_RESUMEN
@@ -551,7 +595,7 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
         "2026-10-01", "2026-10-31")
     # La Revisión guardada por la API cubre el mes entero: el Resumen del mes
     # la toma.
-    fila = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10").json()["filas"][0]
+    fila = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-31").json()["filas"][0]
     assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)
 
     r = c.post(f"{ruta}/revision", json={"comentario": "Otra vez."})
@@ -574,7 +618,7 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     assert set(configuracion) == CLAVES_CONFIGURACION
     assert (configuracion["umbral_pct"], configuracion["mes_corte"],
             configuracion["actualizado_por_nombre"]) == ("60.00", "2026-09", "PERSONA DE PRUEBA")
-    resumen = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10").json()
+    resumen = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-31").json()
     assert resumen["umbral_pct"] == "60.00"
     assert resumen["filas"][0]["estados"] == ["facturada"]
 
@@ -586,7 +630,7 @@ def test_el_resumen_trae_el_ultimo_cambio_de_la_configuracion(real):
     _con_diferencia(real)
     c = real.c
 
-    r = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10")
+    r = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-31")
     assert r.status_code == 200, r.text
     resumen = r.json()
     assert resumen["actualizado_en"] is None
@@ -596,7 +640,7 @@ def test_el_resumen_trae_el_ultimo_cambio_de_la_configuracion(real):
     assert r.status_code == 200, r.text
     cambio = r.json()
 
-    r = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10")
+    r = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-31")
     assert r.status_code == 200, r.text
     resumen = r.json()
     assert resumen["actualizado_en"] is not None
@@ -604,29 +648,66 @@ def test_el_resumen_trae_el_ultimo_cambio_de_la_configuracion(real):
     assert resumen["actualizado_por_nombre"] == "PERSONA DE PRUEBA"
 
 
-@pytest.mark.parametrize("ruta, campo", [
-    ("/resumen/1/2026-13", "mes"),
-    ("/resumen?desde=2026-13&hasta=2026-10", "desde"),
-    ("/resumen?desde=2026-10", "hasta"),
-], ids=["detalle", "resumen_desde", "resumen_sin_hasta"])
-def test_un_mes_mal_escrito_es_422_mes_invalido(real, ruta, campo):
+@pytest.mark.parametrize("ruta, tipo, campo", [
+    ("/resumen/1/2026-13", "mes_invalido", "mes"),
+    ("/resumen?desde=2026-10&hasta=2026-10-31", "fecha_invalida", "desde"),
+    ("/resumen?desde=2026-13-01&hasta=2026-10-31", "fecha_invalida", "desde"),
+    ("/resumen?desde=2026-10-01", "fecha_invalida", "hasta"),
+    ("/resumen/1/2026-10?desde=2026-10-1", "fecha_invalida", "desde"),
+], ids=["detalle_mes", "resumen_mes_solo", "resumen_desde", "resumen_sin_hasta",
+        "detalle_desde"])
+def test_una_fecha_mal_escrita_es_422_con_su_tipo(real, ruta, tipo, campo):
     r = real.c.get(f"{F}{ruta}")
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
-    assert detail["tipo"] == "mes_invalido"
+    assert detail["tipo"] == tipo
     assert detail["campo"] == campo
     assert detail["mensaje"]
 
 
-def test_un_rango_de_13_meses_es_422_rango_invalido(real):
-    r = real.c.get(f"{F}/resumen?desde=2025-10&hasta=2026-10")
+def test_un_rango_que_toca_13_meses_es_422_rango_invalido(real):
+    r = real.c.get(f"{F}/resumen?desde=2025-10-31&hasta=2026-10-01")
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
     assert detail["tipo"] == "rango_invalido"
     assert detail["campo"] == "desde"
     assert detail["mensaje"]
     # 12 meses sí.
-    assert real.c.get(f"{F}/resumen?desde=2025-11&hasta=2026-10").status_code == 200
+    assert real.c.get(f"{F}/resumen?desde=2025-11-01&hasta=2026-10-31").status_code == 200
+
+
+def test_del_1_al_10_la_fila_avisa_y_la_quincena_se_revisa_aparte(real):
+    """De punta a punta, con el filtro por día: Otro período del 1 al 10
+    deja todo afuera (Sin comparar, con el Comprobante y su período); la
+    Revisión de la 1.ª quincena se guarda con ese período y no cubre el mes
+    entero."""
+    _con_diferencia(real)
+    c = real.c
+
+    r = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-10")
+    assert r.status_code == 200, r.text
+    [fila] = r.json()["filas"]
+    assert (fila["desde"], fila["hasta"], fila["estados"]) == (
+        "2026-10-01", "2026-10-10", ["sin_comparar"])
+    assert all(l["fuera_del_filtro"] for l in fila["grupos"])
+    [fuera] = fila["comprobantes_fuera"]
+    assert set(fuera) == CLAVES_COMPROBANTE_FUERA
+    assert (fuera["tipo"], fuera["desde"], fuera["hasta"]) == (
+        "factura", "2026-10-01", "2026-10-15")
+
+    ruta = f"{F}/resumen/{detalle_a8.UNO}/2026-10"
+    quincena = "desde=2026-10-01&hasta=2026-10-15"
+    r = c.post(f"{ruta}/revision?{quincena}", json={"comentario": "Explicada."})
+    assert r.status_code == 201, r.text
+    assert (r.json()["desde"], r.json()["hasta"]) == ("2026-10-01", "2026-10-15")
+    assert (r.json()["revision"]["desde"], r.json()["revision"]["hasta"]) == (
+        "2026-10-01", "2026-10-15")
+    mes = c.get(f"{F}/resumen?desde=2026-10-01&hasta=2026-10-31").json()["filas"][0]
+    assert (mes["estados"], mes["diferencia_revisada"]) == (["con_diferencia"], False)
+
+    r = c.delete(f"{ruta}/revision?{quincena}")
+    assert r.status_code == 200, r.text
+    assert r.json()["revision"] is None
 
 
 def test_una_configuracion_invalida_es_422_con_el_campo(real):

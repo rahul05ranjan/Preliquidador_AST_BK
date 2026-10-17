@@ -7,6 +7,9 @@ a 17).
     pedirlo otra vez.
   - **Configuración** (17): el Umbral y el Mes de corte, sólo el Admin.
 
+El Detalle y la Revisión reciben el filtro del Resumen (desde y hasta,
+"AAAA-MM-DD", opcionales): se recortan al mes y sin ellos son del mes entero.
+
 Las reglas viven en ResumenService; acá sólo se traducen sus excepciones al
 código y al `detail` del contrato. Si el campo no responde, la consulta
 levanta ExternaNoDisponible y `app/main.py` la convierte en 503.
@@ -25,8 +28,9 @@ from app.modulos.facturacion.schemas import (
 )
 from app.modulos.facturacion.services.consulta_externa import ConsultaExternaService
 from app.modulos.facturacion.services.resumen_service import (
-    ClienteNoEncontrado, ConfiguracionInvalida, ErrorResumen, MesInvalido,
-    NoRevisable, RangoInvalido, ResumenService, RevisionInvalida, SinRevision,
+    ClienteNoEncontrado, ConfiguracionInvalida, ErrorResumen, FechaInvalida,
+    MesInvalido, NoRevisable, RangoInvalido, ResumenService, RevisionInvalida,
+    SinRevision,
 )
 
 # Permisos por pantalla (ADR-0020), uno por endpoint, como en comprobantes.py.
@@ -50,6 +54,7 @@ def get_resumen(
 # mensaje (GUIA, regla 15).
 _TIPOS_422 = {
     MesInvalido: "mes_invalido",
+    FechaInvalida: "fecha_invalida",
     RangoInvalido: "rango_invalido",
     RevisionInvalida: "revision_invalida",
     ConfiguracionInvalida: "configuracion_invalida",
@@ -86,9 +91,10 @@ def resumen(
     refrescar: bool = False,
     servicio: ResumenService = Depends(get_resumen),
 ):
-    """Una fila por Cliente y mes, de desde a hasta ("AAAA-MM", los dos
-    incluidos; hasta 12 meses). Sin desde o hasta, el 422 `mes_invalido` del
-    contrato. Con refrescar, vuelve a leer el campo ("Volver a leer")."""
+    """Una fila por Cliente y mes, de desde a hasta ("AAAA-MM-DD", los dos
+    incluidos; hasta 12 meses), cada mes recortado al filtro. Sin desde o
+    hasta, el 422 `fecha_invalida`. Con refrescar, vuelve a leer el campo
+    ("Volver a leer")."""
     try:
         return servicio.resumen(desde, hasta, refrescar=refrescar)
     except ErrorResumen as error:
@@ -101,12 +107,16 @@ def detalle(
     cliente_id: int,
     mes: str,
     refrescar: bool = False,
+    desde: str | None = None,
+    hasta: str | None = None,
     servicio: ResumenService = Depends(get_resumen),
 ):
     """El Cruce de un Cliente en un mes ("AAAA-MM"), una fila por grupo de
-    tareas y unidad, con sus tareas y hasta los partes del campo."""
+    tareas y unidad, con sus tareas y hasta los partes del campo. Con desde y
+    hasta, el del filtro recortado al mes."""
     try:
-        return servicio.detalle(cliente_id, mes, refrescar=refrescar)
+        return servicio.detalle(cliente_id, mes, refrescar=refrescar,
+                                desde=desde, hasta=hasta)
     except ErrorResumen as error:
         raise _http(error) from None
 
@@ -119,13 +129,17 @@ def revisar(
     cliente_id: int,
     mes: str,
     entrada: RevisionEntrada,
+    desde: str | None = None,
+    hasta: str | None = None,
     usuario=Depends(editar_resumen),
     servicio: ResumenService = Depends(get_resumen),
 ):
-    """Deja una Revisión en un mes Con diferencia y sella quién la dejó."""
+    """Deja una Revisión en un mes Con diferencia, con el período del filtro
+    recortado al mes, y sella quién la dejó."""
     try:
         return servicio.revisar(cliente_id, mes, entrada.comentario,
-                                usuario_id=getattr(usuario, "id", None))
+                                usuario_id=getattr(usuario, "id", None),
+                                desde=desde, hasta=hasta)
     except ErrorResumen as error:
         raise _http(error) from None
 
@@ -134,14 +148,18 @@ def revisar(
 def deshacer_revision(
     cliente_id: int,
     mes: str,
+    desde: str | None = None,
+    hasta: str | None = None,
     usuario=Depends(editar_resumen),
     servicio: ResumenService = Depends(get_resumen),
 ):
-    """Deshace la Revisión vigente: queda en el registro, con quién la
-    deshizo. Cualquiera con Editar en `resumen` deshace la de otro."""
+    """Deshace la Revisión vigente del período (el filtro recortado al mes):
+    queda en el registro, con quién la deshizo. Cualquiera con Editar en
+    `resumen` deshace la de otro."""
     try:
         return servicio.deshacer_revision(cliente_id, mes,
-                                          usuario_id=getattr(usuario, "id", None))
+                                          usuario_id=getattr(usuario, "id", None),
+                                          desde=desde, hasta=hasta)
     except ErrorResumen as error:
         raise _http(error) from None
 

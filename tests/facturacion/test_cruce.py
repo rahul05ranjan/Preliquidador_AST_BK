@@ -90,13 +90,13 @@ def linea(tarea_id, unidad, cantidad, importe="1000", *, tipo="factura",
 
 
 def mes(trabajado=(), lineas=(), *, el_mes=SEPTIEMBRE, revisadas=None,
-        umbral=UMBRAL, tareas=TAREAS):
-    """El Cruce de CLIENTE en un mes."""
+        umbral=UMBRAL, tareas=TAREAS, **corte):
+    """El Cruce de CLIENTE en un mes; `corte` es desde y hasta, si van."""
     return cruzar_mes(
         cliente_id=CLIENTE, mes=el_mes,
         trabajado=medidas_por_tarea(trabajado), lineas=list(lineas),
         tareas=tareas, umbral_pct=umbral, mes_corte=MES_CORTE,
-        mes_en_curso=MES_EN_CURSO, revisadas=revisadas)
+        mes_en_curso=MES_EN_CURSO, revisadas=revisadas, **corte)
 
 
 def fila(cruce, tarea_id, unidad="*"):
@@ -387,7 +387,7 @@ def test_las_lineas_van_por_grupo_con_sin_grupo_al_final_y_por_unidad():
 
 def test_el_orden_de_urgencia():
     assert ESTADOS == ("pendiente_de_facturar", "con_diferencia", "falta_comprobante",
-                       "facturada", "mes_en_curso", "antes_del_corte")
+                       "sin_comparar", "facturada", "mes_en_curso", "antes_del_corte")
 
 
 def test_antes_del_corte_va_solo_y_no_supera():
@@ -511,6 +511,196 @@ def test_las_que_superan():
     cruce = mes([trabajo(PODA, jornal="10"), trabajo(TRACTOR, maquina="5")],
                 [linea(PODA, "horas_peon", "20"), linea(TRACTOR, "horas_tractor", "5")])
     assert cruce.superan == {("MANUALES", "horas_peon")}
+
+
+# ─── El filtro por día (spec de la E3a por grupo, decisiones 6 a 8) ─────────
+
+DIA_1 = date(2026, 9, 1)
+DIA_10 = date(2026, 9, 10)
+DIA_15 = date(2026, 9, 15)
+DIA_16 = date(2026, 9, 16)
+DIA_30 = date(2026, 9, 30)
+
+
+def test_con_desde_y_hasta_del_mes_entero_da_lo_mismo_que_sin_filtro():
+    trabajado = [trabajo(PODA, jornal="10"), trabajo(RALEO, unidades="500")]
+    lineas = [linea(PODA, "horas_peon", "20", comprobante_id=1),
+              linea(RALEO, "plantas", "500", comprobante_id=2, fecha=DIA_16)]
+    sin_filtro = mes(trabajado, lineas)
+    con_filtro = mes(trabajado, lineas, desde=DIA_1, hasta=DIA_30)
+    assert con_filtro == sin_filtro
+    assert con_filtro.comprobantes_fuera == []
+    assert all(not g.fuera_del_filtro for g in con_filtro.grupos)
+
+
+@pytest.mark.parametrize("desde, hasta, cuenta", [
+    (DIA_1, DIA_15, True),
+    (DIA_1, DIA_30, True),
+    (DIA_1, DIA_10, False),
+])
+def test_una_linea_del_1_entra_con_la_quincena_y_el_mes_y_no_con_del_1_al_10(
+        desde, hasta, cuenta):
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "horas_peon", "10", fecha=DIA_1)], desde=desde, hasta=hasta)
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.fuera_del_filtro is not cuenta
+    assert (len(cruce.lineas) == 1) is cuenta
+
+
+def test_lo_que_cae_en_parte_no_cuenta_y_su_grupo_queda_fuera_del_filtro():
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "horas_peon", "10", "900", comprobante_id=80,
+                       numero="0001-00001234")],
+                desde=DIA_1, hasta=DIA_10)
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.fuera_del_filtro is True
+    assert (g.diferencia, g.diferencia_pct, g.supera) == (None, None, False)
+    assert g.campo == D("10")
+    assert cruce.lineas == []
+    assert cruce.facturado_neto == D("0")
+    assert cruce.superan == set()
+    assert cruce.comprobantes_fuera == [
+        {"id": 80, "tipo": "factura", "numero": "0001-00001234",
+         "desde": DIA_1, "hasta": DIA_15}]
+
+
+def test_el_grupo_mixto_no_se_compara_y_no_avisa():
+    # RALEO entra entera (del 16 al 30) y PODA cae en parte: el grupo MANUALES
+    # en horas no se compara aunque tenga una Línea adentro.
+    cruce = mes([trabajo(PODA, jornal="10"), trabajo(RALEO, jornal="10"),
+                 trabajo(TRACTOR, maquina="5")],
+                [linea(PODA, "horas_peon", "10", fecha=DIA_1),
+                 linea(RALEO, "horas_peon", "30", fecha=DIA_16),
+                 linea(TRACTOR, "horas_tractor", "9", fecha=DIA_16)],
+                desde=DIA_10, hasta=DIA_30)
+    mixto = grupo(cruce, "MANUALES", "horas_peon")
+    assert mixto.fuera_del_filtro is True
+    assert mixto.facturado == D("30")
+    assert (mixto.diferencia, mixto.diferencia_pct, mixto.supera) == (None, None, False)
+    tractor = grupo(cruce, "MAQUINARIA", "horas_tractor")
+    assert tractor.fuera_del_filtro is False
+    assert tractor.supera is True
+    assert cruce.superan == {("MAQUINARIA", "horas_tractor")}
+    assert cruce.estados == ["con_diferencia"]
+
+
+def test_una_linea_entera_afuera_se_ignora_sin_aviso():
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "horas_peon", "10", fecha=DIA_16)],
+                desde=DIA_1, hasta=DIA_15)
+    assert cruce.comprobantes_fuera == []
+    assert grupo(cruce, "MANUALES", "horas_peon").fuera_del_filtro is False
+    assert cruce.estados == ["pendiente_de_facturar"]
+
+
+def test_una_linea_en_parte_sin_partes_igual_da_su_grupo_fuera_del_filtro():
+    cruce = mes([], [linea(PODA, "horas_peon", "10")], desde=DIA_1, hasta=DIA_10)
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.fuera_del_filtro is True
+    assert g.partes == 0
+
+
+def test_con_todo_afuera_es_sin_comparar_y_no_pendiente_de_facturar():
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "horas_peon", "10")], desde=DIA_1, hasta=DIA_10)
+    assert cruce.estados == ["sin_comparar"]
+
+
+def test_sin_comparar_lleva_falta_comprobante_al_lado():
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "horas_peon", "10", comprobante_id=81, adjuntos=0,
+                       numero="0001-00000081")],
+                desde=DIA_1, hasta=DIA_10)
+    assert cruce.estados == ["falta_comprobante", "sin_comparar"]
+    assert cruce.comprobantes_sin_adjunto == [
+        {"id": 81, "tipo": "factura", "numero": "0001-00000081"}]
+
+
+def test_un_grupo_afuera_y_otro_solo_con_partes_es_con_diferencia():
+    cruce = mes([trabajo(PODA, jornal="10"), trabajo(TRACTOR, maquina="5")],
+                [linea(PODA, "horas_peon", "10")], desde=DIA_1, hasta=DIA_10)
+    assert grupo(cruce, "MAQUINARIA", "horas_tractor").supera is True
+    assert cruce.estados == ["con_diferencia"]
+
+
+def test_una_nota_de_credito_en_parte_afuera_tampoco_cuenta():
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "horas_peon", "10", comprobante_id=90),
+                 linea(PODA, "horas_peon", "4", tipo="nota_credito", comprobante_id=91,
+                       fecha=DIA_16, numero="0001-00000091")],
+                desde=DIA_1, hasta=date(2026, 9, 20))
+    g = grupo(cruce, "MANUALES", "horas_peon")
+    assert g.fuera_del_filtro is True
+    assert g.facturado == D("10")
+    assert [c["id"] for c in cruce.comprobantes_fuera] == [91]
+    assert cruce.comprobantes_fuera[0]["tipo"] == "nota_credito"
+    assert (cruce.comprobantes_fuera[0]["desde"], cruce.comprobantes_fuera[0]["hasta"]) == (
+        DIA_16, DIA_30)
+
+
+def test_un_comprobante_con_lineas_del_1_y_del_16_cuenta_por_quincena():
+    lineas = [linea(PODA, "horas_peon", "10", comprobante_id=95, fecha=DIA_1),
+              linea(PODA, "horas_peon", "7", comprobante_id=95, fecha=DIA_16)]
+    primera = mes([trabajo(PODA, jornal="10")], lineas, desde=DIA_1, hasta=DIA_15)
+    assert grupo(primera, "MANUALES", "horas_peon").facturado == D("10")
+    assert primera.comprobantes_fuera == []
+    assert primera.estados == ["facturada"]
+
+
+def test_un_comprobante_con_dos_quincenas_en_parte_avisa_una_vez_con_las_dos():
+    lineas = [linea(PODA, "horas_peon", "10", comprobante_id=96, fecha=DIA_1),
+              linea(PODA, "horas_peon", "7", comprobante_id=96, fecha=DIA_16)]
+    cruce = mes([trabajo(PODA, jornal="10")], lineas,
+                desde=date(2026, 9, 5), hasta=date(2026, 9, 20))
+    assert [(c["id"], c["desde"], c["hasta"]) for c in cruce.comprobantes_fuera] == [
+        (96, DIA_1, DIA_30)]
+
+
+def test_los_comprobantes_fuera_van_por_periodo_y_por_id():
+    lineas = [linea(PODA, "horas_peon", "1", comprobante_id=12, fecha=DIA_16),
+              linea(PODA, "horas_peon", "1", comprobante_id=11, fecha=DIA_16),
+              linea(RALEO, "horas_peon", "1", comprobante_id=13, fecha=DIA_1)]
+    cruce = mes([], lineas, desde=date(2026, 9, 5), hasta=date(2026, 9, 20))
+    assert [c["id"] for c in cruce.comprobantes_fuera] == [13, 11, 12]
+
+
+def test_una_linea_que_no_cuenta_no_avisa_aunque_caiga_en_parte():
+    cruce = mes([trabajo(PODA, jornal="10")],
+                [linea(PODA, "bins", "3"), linea(INTERNA, "horas_peon", "2"),
+                 linea(PODA, "horas_peon", "1", pendiente_de_facturar=True)],
+                desde=DIA_1, hasta=DIA_10)
+    assert cruce.comprobantes_fuera == []
+    assert cruce.estados == ["pendiente_de_facturar"]
+
+
+def test_en_un_mes_en_gris_el_grupo_queda_fuera_del_filtro_y_el_estado_no_cambia():
+    cruce = mes([trabajo(PODA, jornal="10", mes=OCTUBRE)],
+                [linea(PODA, "horas_peon", "10", fecha=date(2026, 10, 1))],
+                el_mes=OCTUBRE, desde=date(2026, 10, 1), hasta=date(2026, 10, 10))
+    assert grupo(cruce, "MANUALES", "horas_peon").fuera_del_filtro is True
+    assert cruce.estados == ["mes_en_curso"]
+
+
+def test_el_cruce_trae_su_recorte():
+    cruce = mes([trabajo(PODA, jornal="10")], desde=DIA_1, hasta=DIA_10)
+    assert (cruce.desde, cruce.hasta) == (DIA_1, DIA_10)
+    entero = mes([trabajo(PODA, jornal="10")])
+    assert (entero.desde, entero.hasta) == (DIA_1, DIA_30)
+
+
+def test_cruzar_recorta_el_filtro_a_cada_mes():
+    trabajado = [trabajo(PODA, jornal="10", mes=AGOSTO), trabajo(PODA, jornal="10")]
+    lineas = [linea(PODA, "horas_peon", "10", fecha=date(2026, 8, 16), comprobante_id=1),
+              linea(PODA, "horas_peon", "10", fecha=DIA_1, comprobante_id=2)]
+    cruces = cruzar(trabajado, lineas, TAREAS, umbral_pct=UMBRAL, mes_corte=MES_CORTE,
+                    mes_en_curso=MES_EN_CURSO,
+                    desde=date(2026, 8, 20), hasta=DIA_15)
+    por_mes = {c.mes: c for c in cruces}
+    assert (por_mes[AGOSTO].desde, por_mes[AGOSTO].hasta) == (
+        date(2026, 8, 20), date(2026, 8, 31))
+    assert [c["id"] for c in por_mes[AGOSTO].comprobantes_fuera] == [1]
+    assert (por_mes[SEPTIEMBRE].desde, por_mes[SEPTIEMBRE].hasta) == (DIA_1, DIA_15)
+    assert por_mes[SEPTIEMBRE].estados == ["facturada"]
 
 
 # ─── cruzar(): todos los Clientes y meses del Resumen ───────────────────────
