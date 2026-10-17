@@ -10,17 +10,18 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   filtro por día. Spec aprobada el 2026-10-17 (prueba del flujo nuevo: spec con tickets, sin
   planificador), en `docs/superpowers/plans/2026-10-17-facturacion-e3a-por-grupo.md` de la rama
   `feature/facturacion-e3`; reemplaza lo que el plan del 2026-10-14 dice del cruce por tarea, el filtro
-  por meses, la Revisión por tarea y el script del cruce. Fase 3: Ticket 1 (Resumen por grupo y
-  migración 006) en curso en la rama `feature/facturacion-e3-t1`; el 5b (docs) ya está mergeado en
-  `feature/facturacion-e3`. La spec se corrigió con el usuario: se guardan todas las Revisiones por
+  por meses, la Revisión por tarea y el script del cruce. Fase 3: el Ticket 1 (Resumen por grupo y
+  migración 006) y el 5b (docs) están mergeados en `feature/facturacion-e3`, en los dos repos. La 006
+  se revisó sola (0 urgent y 0 high; los minors van al cuerpo del PR y el deploy la aplica con el
+  backend parado) y se aplicó en `testing` con respaldo y OK, dos veces: el modelo de la rama coincide
+  con la base. Las 7 filas de la Revisión por tarea de `testing` se perdieron con la tabla, como
+  dice la migración. Hasta el Ticket 2, el Detalle del front de la rama queda roto a propósito. La spec se corrigió con el usuario: se guardan todas las Revisiones por
   período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
   base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
 
 ## Próximo paso
 
-Mergear el Ticket 1 en `feature/facturacion-e3`, una revisión corta de la 006 sola (pedido del usuario,
-2026-10-17: que no llegue a `testing` sin revisar), aplicarla en `testing` con respaldo y OK, y
-seguir con los Tickets 2, 3, 4 y 5a en serie. Después, revisión de código, la F5 del usuario contra
+Seguir con los Tickets 2, 3, 4 y 5a en serie. Después, revisión de código, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
