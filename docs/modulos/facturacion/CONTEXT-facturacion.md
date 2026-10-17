@@ -195,12 +195,17 @@ recortado a ese mes:
   Comprobantes históricos).
 - **Facturada**: ninguno de los anteriores. Si tuvo una Revisión de diferencia, lleva la nota
   "Diferencia revisada".
-- **Mes en curso**: el mes todavía no terminó. Sólo se controla Falta comprobante; lo demás,
-  desde el primer día del mes siguiente.
 - **Antes del corte**: el mes es anterior al Mes de corte. No se controla nada.
 
-Un mes puede tener varios a la vez (Con diferencia y Falta comprobante, o Mes en curso y Falta
-comprobante). Pendiente de facturar y Facturada van siempre solos.
+Todo mes desde el Mes de corte se controla, también el mes en curso. Un mes puede tener varios a
+la vez (Con diferencia y Falta comprobante, o Sin comparar en este período y Falta comprobante).
+Pendiente de facturar y Facturada van siempre solos.
+_Avoid_: "Mes en curso" como Estado del mes (el Estado sale del período que se mira, no del mes).
+
+**Período en curso**:
+El período que se mira, recortado a un mes, cuando todavía no terminó: su último día es hoy o
+posterior. Se controla igual que uno terminado, con el aviso "En curso": el campo todavía puede
+sumar partes, así que lo trabajado puede crecer. No es un Estado del mes.
 
 **Alerta de facturación**:
 Los tres Estados del mes que piden que alguien haga algo: Pendiente de facturar, Con diferencia
