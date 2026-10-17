@@ -55,3 +55,6 @@ core/003_borrar_usuario_modulo.sql
 facturacion/001_unidad_por_tarea.sql
 facturacion/002_borrar_unidad_por_tarea.sql
 facturacion/003_comprobantes.sql
+facturacion/004_resumen.sql
+facturacion/005_borrar_pendientes_y_cruce.sql
+facturacion/006_revision_por_grupo.sql

@@ -36,30 +36,61 @@ mismos números que el informe de Power BI que hoy hace ese control.
 - **Resumen** (la que abre el módulo):
   - Arriba, tres cuadros con las Alertas de facturación (Pendiente de facturar, Con diferencia
     y Falta comprobante), cada uno con su cantidad. Tocar uno filtra la tabla por esa Alerta.
-  - Barra de filtros: período con atajos (Mes pasado, Este mes, Últimos 3 meses, Este año, Otro
-    período) y seleccionables de Mes, Cliente y Estado. Arranca en el mes pasado.
-  - Tabla, una fila por mes y Cliente: Horas peón, Horas tractor, Tancadas, Plantas, Hectáreas
-    (lo trabajado según el campo), Facturado (neto), Estado y una acción. La fila TOTAL queda
-    fija abajo.
-  - La columna Estado muestra todos los Estados del mes de la fila. Cada etiqueta es un link a
+  - Barra de filtros: período por día, con Desde y Hasta y los atajos Quincena pasada, Esta
+    quincena, Mes pasado, Este mes, Últimos 3 meses, Este año y Otro período, y seleccionables
+    de Mes, Cliente y Estado. Arranca en Mes pasado. Las filas siguen siendo por mes y Cliente:
+    cada mes se mira con el período recortado a ese mes, y el Detalle recibe el mismo período.
+  - Arriba a la derecha, "Datos del campo de las HH:MM · Volver a leer": la hora de la lectura
+    más vieja del sistema de campo que usa la pantalla, y un link que la vuelve a leer.
+  - Debajo de los cuadros y de la barra, sobre la tabla, un aviso cuando hay tareas facturables
+    sin Unidad sugerida con trabajo en el período: cuántas son, un desplegable con cada tarea y
+    en cuántos Clientes, y que se definen en la app de campo. No es una Alerta: no entra en los
+    cuadros ni en el Estado del mes.
+  - Tabla, un bloque por mes y Cliente: un encabezado con el Estado del mes y la acción (por
+    ejemplo, "Con diferencia · N líneas superan", que cuenta las líneas: un grupo con dos
+    Unidades que superan cuenta 2), y debajo una línea por grupo de tareas y Unidad de
+    facturación, con Campo, Facturado, Dif. y Dif. %. Sólo cantidades, sin fila TOTAL. Lo
+    facturado sin Cantidad del campo muestra Dif. % como raya "—".
+  - Orden fijo, sin ordenar por columna: el mes más nuevo primero, después el Estado del mes
+    más urgente y después el Cliente; dentro del bloque, por grupo ("Sin grupo" al final) y por
+    Unidad.
+  - Un grupo con una Línea cuyo período no entra entero en el período mirado muestra el
+    Facturado como "fuera del filtro", en gris, sin Dif. ni Dif. %, y no avisa; tampoco se
+    compara si además tiene otra Línea entera adentro. El bloque lleva arriba el aviso
+    "1 factura no entra en este filtro", con qué días cubre y dónde termina el filtro (por
+    ejemplo, "La Factura 0001-00001234 cubre del 1 al 15 de julio, y el filtro termina el 10.
+    Para compararla, mirá la quincena entera."), y el botón "Ver del 1 al 15 de julio", que
+    pasa el filtro a ese período. Con varios, el título dice "N facturas" y la lista nombra
+    cada una; una Nota de crédito se nombra como tal. Si ningún grupo del bloque se puede
+    comparar, el Estado es Sin comparar en este período.
+  - El encabezado muestra todos los Estados del mes del bloque. Cada etiqueta es un link a
     donde se resuelve: Con diferencia al Detalle, Falta comprobante al Comprobante sin
     Adjunto.
-  - El botón de la fila lleva a la Alerta más urgente, en este orden: Pendiente de facturar
+  - El botón del encabezado lleva a la Alerta más urgente, en este orden: Pendiente de facturar
     (Cargar factura, abre la Precarga), Con diferencia (Ver diferencia), Falta comprobante
     (Adjuntar PDF). Sin Alertas, Ver detalle.
-  - Una fila Facturada con Revisión de diferencia lleva la nota "Diferencia revisada". El mes
-    en curso y los meses Antes del corte van en gris.
+  - Un bloque Facturada con Revisión de diferencia lleva la nota "Diferencia revisada". El mes
+    en curso y los meses Antes del corte van en gris: sus líneas se ven en gris, con Dif., sin
+    aviso.
   - Un pie dice desde qué mes se controla, el Umbral de diferencia y que la cosecha no entra.
+    Sólo el Admin ve "Cambiar", que abre en el mismo pie un formulario chico para el Umbral de
+    diferencia y el Mes de corte.
 - **Detalle** (el Cruce de un Cliente en un mes):
   - Barra superior con el Cliente, el mes, el Estado del mes y los Comprobantes del mes como
     links.
-  - Tabla por grupo de tareas y tarea: Unidad, Campo, Facturado, Diferencia y Dif. %. Las
-    tareas que superan el Umbral de diferencia se marcan con una etiqueta, no sólo con color.
-    Fila TOTAL del mes en pesos.
-  - Al tocar una tarea, el panel lateral muestra la comparación y sus partes del campo: Fecha,
-    Dónde, Supervisor y Cantidad, con el total. No se abre por finca.
-  - "Marcar revisada" abre un panel con las tareas que superan y un comentario obligatorio.
-    Una vez revisada, un aviso muestra quién, cuándo y el comentario, con "Deshacer".
+  - Mira el mismo período que el Resumen, recortado al mes.
+  - Tabla con una fila por grupo de tareas y Unidad de facturación, todas cerradas: Unidad,
+    Campo, Facturado, Diferencia y Dif. %. Los grupos que superan el Umbral de diferencia se
+    marcan con una etiqueta, no sólo con color; las tareas no avisan. El triángulo de la fila
+    abre sus tareas con la Cantidad del campo, y "Sin Unidad sugerida" junto a la tarea que no
+    la tiene. Fila TOTAL en pesos, que suma sólo las Líneas que cuentan en el período.
+  - El nombre de una tarea abre un modal con sus partes del campo: Fecha, Finca, Supervisor,
+    Cantidad y el total. Se cierra con Cerrar, Escape o un click afuera, y el foco vuelve a la
+    tarea. No se abre por finca. No hay panel lateral.
+  - "Marcar revisada" abre un modal con los grupos que superan y un comentario obligatorio. La
+    Revisión vale sólo para el período en que se deja. Una vez revisada, un aviso muestra
+    quién, cuándo y el comentario, con "Deshacer". Deshacer no la borra: queda en el registro,
+    con quién la deshizo, y vale la más reciente sin deshacer de ese período.
   - No se factura desde acá: si falta facturar algo, se vuelve al Resumen.
 - **Precarga** (cargar una factura o una nota de crédito):
   - Se abre desde el Resumen (con el mes y el Cliente de la fila) o con "Nueva factura" y
@@ -107,9 +138,17 @@ mismos números que el informe de Power BI que hoy hace ese control.
   de facturación grande trae cientos de renglones.
 - Resumen sin filas con los filtros: "Nada con estos filtros".
 - Un Cliente sin trabajo y sin Comprobantes en el mes no aparece.
+- Con los atajos, el aviso de facturas que no entran casi no aparece: cada factura cubre una
+  quincena entera. Sale con un Otro período que corta una quincena y, con el Período facturado,
+  con una factura del mes completo mirada por quincena ("1 factura del mes completo no entra en
+  esta quincena", con "Ver julio entero").
+- Desde el día 16, Quincena pasada cae en el Mes en curso, que sólo controla Falta comprobante;
+  Esta quincena y Este mes caen siempre ahí.
 - Comprobante histórico: sin Empresa emisora ni Adjunto, con una marca y sin Falta
   comprobante.
-- Tarea facturable sin Unidad sugerida: aviso en el Resumen (etapa 3).
+- Tarea facturable sin Unidad sugerida: un solo aviso sobre la tabla del Resumen, no uno por
+  fila. En el Detalle, la tarea dice "Sin Unidad sugerida"; en la Precarga, la Unidad queda
+  vacía y marcada.
 - La lectura del sistema de campo es lenta: indicador de carga. Toda escritura muestra el
   overlay.
 
@@ -124,6 +163,3 @@ mismos números que el informe de Power BI que hoy hace ese control.
 
 - Pegar varias filas desde Excel en la grilla de líneas: por ahora no; se agrega si las
   contadoras lo piden.
-- Dónde cambia el Admin el Umbral de diferencia y el Mes de corte: lo decide la etapa 3.
-- Dónde va el aviso de tarea facturable sin Unidad sugerida dentro del Resumen: lo decide la
-  etapa 3.
