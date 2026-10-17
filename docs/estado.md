@@ -6,7 +6,7 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Facturación: el Estado del Resumen se controla por el período filtrado y no por el mes (sale "Mes en curso"; un período que no terminó se controla igual, con el aviso "En curso"). Plan aprobado el 2026-10-17 en `docs/superpowers/plans/2026-10-17-facturacion-periodo-en-curso.md` de la rama `feature/facturacion-periodo-en-curso` (los dos repos). Fase 3: ejecución.
+- Facturación: el Estado del Resumen se controla por el período filtrado y no por el mes (sale "Mes en curso"; un período que no terminó se controla igual, con el aviso "En curso"), y el período se elige en un calendario de rango con los atajos al costado (Ticket 4, sumado a pedido del usuario el mismo día). Plan aprobado el 2026-10-17 en `docs/superpowers/plans/2026-10-17-facturacion-periodo-en-curso.md` de la rama `feature/facturacion-periodo-en-curso` (los dos repos). Fase 3: ejecución.
 
 ## Próximo paso
 
