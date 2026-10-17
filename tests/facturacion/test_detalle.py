@@ -583,7 +583,7 @@ def test_los_estados_son_los_del_resumen_para_el_mismo_mes(db, servicio, consult
     consulta.parte(TRES, RALEO, date(2026, 10, 3), unidades="300")
     comprobante(db, TRES, [(RALEO, "plantas", date(2026, 10, 1), "300", "900")])
     consulta.parte(TRES, PODA, date(2026, 10, 3), jornal="10")          # falta y diferencia
-    # Septiembre, antes del corte, y noviembre, en curso.
+    # Septiembre, antes del corte, y noviembre, en curso: se controla igual.
     consulta.parte(UNO, PODA, date(2026, 9, 3), jornal="100")
     consulta.parte(DOS, RALEO, date(2026, 11, 3), unidades="300")
     comprobante(db, DOS, [(RALEO, "plantas", date(2026, 11, 1), "100", "300")])
@@ -597,6 +597,7 @@ def test_los_estados_son_los_del_resumen_para_el_mismo_mes(db, servicio, consult
         detalle = detalles[(f["cliente_id"], f["mes"])]
         assert detalle["estados"] == f["estados"], (f["cliente_id"], f["mes"])
         assert detalle["diferencia_revisada"] == f["diferencia_revisada"]
+        assert detalle["en_curso"] == f["en_curso"]
         assert detalle["se_puede_revisar"] == ("con_diferencia" in f["estados"])
     # Y no es una comparación vacía: están todos los casos.
     assert {clave: (d["estados"], d["diferencia_revisada"])
@@ -607,15 +608,12 @@ def test_los_estados_son_los_del_resumen_para_el_mismo_mes(db, servicio, consult
         (CINCO, OCTUBRE): (["facturada"], True),
         (TRES, OCTUBRE): (["con_diferencia", "falta_comprobante"], False),
         (UNO, SEPTIEMBRE): (["antes_del_corte"], False),
-        (DOS, NOVIEMBRE): (["falta_comprobante", "mes_en_curso"], False),
+        (DOS, NOVIEMBRE): (["con_diferencia", "falta_comprobante"], False),
     }
 
 
-@pytest.mark.parametrize("mes, estados", [
-    ("2026-09", ["antes_del_corte"]),
-    ("2026-11", ["mes_en_curso"]),
-])
-def test_en_los_meses_que_no_se_controlan_nada_supera(db, servicio, consulta, mes, estados):
+def test_antes_del_corte_nada_supera(db, servicio, consulta):
+    mes = "2026-09"
     inicio = fechas.leer_mes(mes)
     consulta.parte(UNO, PODA, inicio.replace(day=3), jornal="100")
     consulta.parte(UNO, RALEO, inicio.replace(day=4), unidades="300")
@@ -624,7 +622,7 @@ def test_en_los_meses_que_no_se_controlan_nada_supera(db, servicio, consulta, me
 
     detalle = servicio.detalle(UNO, mes)
 
-    assert detalle["estados"] == estados
+    assert detalle["estados"] == ["antes_del_corte"]
     assert len(tareas(detalle)) == 3
     assert all(g["supera"] is False for g in detalle["grupos"])
     assert detalle["se_puede_revisar"] is False

@@ -179,8 +179,6 @@ haga algo:
   que se mira"). Va en lugar de Pendiente de facturar y de Con diferencia, y no es una Alerta.
 - **Falta comprobante** (Alerta): algún Comprobante del mes sin Adjunto, salvo los históricos.
 - **Facturada**: ninguno de los anteriores.
-- **Mes en curso**: el mes no terminó. Sólo se controla Falta comprobante, porque es de la
-  factura y no del mes; lo demás, desde el primer día del mes siguiente.
 - **Antes del corte**: anterior al Mes de corte. Se ve, pero no se controla.
 
 Reglas:
@@ -191,8 +189,8 @@ Reglas:
   Facturada van siempre solos. Los cuadros y el filtro de Estado cuentan cada Alerta por
   separado.
 - **El período que se mira** (2026-10-17). El Resumen y el Detalle se filtran **por día**,
-  con Desde y Hasta y los atajos Quincena pasada, Esta quincena, Mes pasado, Este mes, Últimos
-  3 meses, Este año y Otro período; arranca en Mes pasado. Las filas siguen siendo por mes y
+  con el período elegido en un calendario de rango y los atajos Quincena pasada, Esta quincena, Mes pasado,
+  Este mes, Últimos 3 meses y Este año al costado; arranca en Mes pasado. Las filas siguen siendo por mes y
   Cliente, el Estado se calcula sobre el filtro recortado a cada mes y el Detalle recibe el
   mismo rango. El campo trae los partes cuya fecha cae en el filtro. Porqué: la mayoría de la
   facturación es quincenal y sólo por meses no se podía controlar una quincena. Reemplaza al
@@ -208,6 +206,14 @@ Reglas:
   Línea, cada una en su quincena (decisión del usuario, 2026-10-17). Una
   factura del mes completo se reconoce recién con el Período facturado (E3b), y el mismo aviso
   le sirve sin cambios.
+- **Un período que todavía no terminó se controla igual** (2026-10-17). Todo mes desde el Mes
+  de corte se controla, también el mes en curso. Si el último día del período que se mira,
+  recortado al mes, es hoy o posterior, la fila y el Detalle llevan el aviso "En curso": el
+  campo todavía puede sumar partes. Se puede revisar como cualquier otro: si después cambian
+  los grupos que superan, vuelve a Con diferencia. Porqué: la facturación es quincenal, y con
+  el estado Mes en curso la Quincena pasada del mes corriente no avisaba Pendiente de facturar
+  ni daba "Cargar factura" hasta el mes siguiente. Reemplaza al estado Mes en curso del
+  2026-10-14.
 - **Umbral de diferencia**: uno solo para todos los Clientes y grupos de tareas, arranca en 5 %
   y lo cambia sólo el Admin. Uno por Cliente o por tarea se suma si hace falta.
 - **Mes de corte**: arranca en octubre de 2026 y lo mueve sólo el Admin, por ejemplo cuando se
