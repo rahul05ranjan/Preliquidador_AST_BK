@@ -37,16 +37,18 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   Paso R1 (commit `2aed4cd`). El usuario eligió dejarlos afuera por los dos lados, los mixtos incluidos,
   y la decisión 4 de la spec quedó ampliada. Hubo 0 high, 16 minor que van al cuerpo de los PRs y 11
   descartados. Los tests de facturación dan 976 passed.
+  Smoke en el navegador contra `testing` (2026-10-17): anduvieron el Detalle a 1366 px, el teclado en
+  grupos y tareas, el modal de partes, Revisar y Deshacer de un período parcial, el 409 y los selectores
+  de fecha (con teclado recarga el Resumen). Hallazgos: a 1366 px la tabla del Resumen pasa el ancho
+  (1135 contra 1074 px), corta "Cargar factura" y parte el estado en tres líneas; después del botón del
+  aviso y de un click afuera del modal de Revisión, el foco cae en el cuerpo de la página; Desde y Hasta
+  quedan apilados; con una Revisión vieja sin grupos (sólo en `testing`, por la 006) el aviso dice
+  "que cubría .".
 
 ## Próximo paso
 
-El smoke en el navegador de los Tickets 2 a 4, contra `testing`. Hay que mirar:
-- 1366 px de ancho y 768 de alto, en el Resumen (con la fila del aviso) y en el Detalle;
-- el modal de partes con textos largos;
-- el foco y el teclado en las filas, los modales y los selectores de fecha;
-- Revisar y Deshacer de un período parcial.
-
-Después, la F5 del usuario contra
+Decidir con el usuario qué hallazgos del smoke se arreglan antes de los PRs (el ancho del Resumen
+a 1366 px, como paso visual con `impeccable`; el foco). Después, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
