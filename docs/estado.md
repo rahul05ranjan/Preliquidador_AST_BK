@@ -43,12 +43,14 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   (1135 contra 1074 px), corta "Cargar factura" y parte el estado en tres líneas; después del botón del
   aviso y de un click afuera del modal de Revisión, el foco cae en el cuerpo de la página; Desde y Hasta
   quedan apilados; con una Revisión vieja sin grupos (sólo en `testing`, por la 006) el aviso dice
-  "que cubría .".
+  "que cubría .". El usuario eligió arreglar el ancho y el foco antes de los PRs: Pasos R2 y R3 de la
+  spec, commiteados en `feature/facturacion-e3` (front y spec) y verificados en el navegador (a 1366 px,
+  sin scroll horizontal en Mes pasado, Este año y con el aviso; a 1920, el estado en una línea; el foco
+  vuelve al título y al botón que abrió el modal). Los otros dos van como minor.
 
 ## Próximo paso
 
-Decidir con el usuario qué hallazgos del smoke se arreglan antes de los PRs (el ancho del Resumen
-a 1366 px, como paso visual con `impeccable`; el foco). Después, la F5 del usuario contra
+La F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
@@ -81,7 +83,11 @@ rol (2026-10-13).
   - nombres confusos;
   - código repetido, también en `_total`;
   - `CruceMes.facturado_neto` sin uso;
-  - accesibilidad y letra chica del Resumen, del Detalle y de los modales.
+  - accesibilidad y letra chica del Resumen, del Detalle y de los modales;
+  - del smoke: Desde y Hasta quedan apilados en el selector; con una Revisión vieja sin grupos el aviso
+    dice "que cubría ." (sólo en `testing`); después del aviso, el Tab pasa primero por "Volver a leer"
+    y las Alertas; con meses parciales y porcentajes grandes, el Resumen a 1366 px puede volver a pasarse
+    por pocos px.
 
   El detalle va en los cuerpos de los PRs hermanos (2026-10-17).
 - Deuda previa vista en la revisión de la E3a por grupo: si una Factura y una Nota de crédito de la
