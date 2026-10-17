@@ -32,11 +32,21 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   tickets. La spec se corrigió con el usuario: se guardan todas las Revisiones por
   período, y cada Línea entra o no en el filtro por su cuenta, no el comprobante entero. Lo ya hecho de la E3a por tarea (A0 a A13, FA0 a FA7, R1 a R3, 004 y 005 en `testing`) es la
   base; la comparación F5 por tarea queda obsoleta. El Mes de corte de `testing` está en julio de 2026.
+  Fase 4: la revisión de código está hecha, en dos rondas porque la rama toca la migración. Hubo 1 urgent:
+  el TOTAL del Detalle sumaba los grupos fuera del filtro e inventaba una diferencia. Se arregló como
+  Paso R1 (commit `2aed4cd`). El usuario eligió dejarlos afuera por los dos lados, los mixtos incluidos,
+  y la decisión 4 de la spec quedó ampliada. Hubo 0 high, 16 minor que van al cuerpo de los PRs y 11
+  descartados. Los tests de facturación dan 976 passed.
 
 ## Próximo paso
 
-Revisión de código de la E3a por grupo en los dos repos y el smoke en el navegador de los Tickets 2
-a 4. Después, la F5 del usuario contra
+El smoke en el navegador de los Tickets 2 a 4, contra `testing`. Hay que mirar:
+- 1366 px de ancho y 768 de alto, en el Resumen (con la fila del aviso) y en el Detalle;
+- el modal de partes con textos largos;
+- el foco y el teclado en las filas, los modales y los selectores de fecha;
+- Revisar y Deshacer de un período parcial.
+
+Después, la F5 del usuario contra
 Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
@@ -65,6 +75,17 @@ rol (2026-10-13).
 
 ## A futuro
 
+- Limpieza y prolijidad de código de la E3a por grupo, los minors de la revisión sin tocar:
+  - nombres confusos;
+  - código repetido, también en `_total`;
+  - `CruceMes.facturado_neto` sin uso;
+  - accesibilidad y letra chica del Resumen, del Detalle y de los modales.
+
+  El detalle va en los cuerpos de los PRs hermanos (2026-10-17).
+- Deuda previa vista en la revisión de la E3a por grupo: si una Factura y una Nota de crédito de la
+  misma tarea y unidad netean la cantidad a 0 con importes distintos y no hay partes, ese importe suma
+  en el TOTAL del Detalle sin estar en ninguna fila. Además, `scripts/refrescar_testing.py` no refresca
+  las tablas de Facturación (2026-10-17).
 - CI (integración continua): GitHub Actions en cada PR de los dos repos (`pytest` con `.env` ficticio, sin secretos; `npm test`, lint y build), como check obligatorio para mergear a `main`. Antes hay que resolver los 6 errores de lint de `main` y medir cuánto tarda la suite del backend en GitHub; va con un ADR. Decisión del usuario: sí al CI, no al deploy automático (el deploy sigue a mano y con OK; a lo sumo, más adelante, un `scripts/deploy.sh` que corra desde su máquina). Todavía no se arranca (2026-10-13).
 - Limpieza y prolijidad de código de Min/tancada en Tancadas vs Jornal, minors de la revisión sin tocar: la palabra "rendimiento" sola, que el glosario pide evitar (ayuda, un test y un comentario); el redondeo repetido cuatro veces; nombres cortos de los acumuladores; `fmtMin` repite `fmt`; el encabezado sin `title` con la fórmula. El detalle va en los cuerpos del BK #98 y el FT #81 (2026-10-13).
 - Deuda previa vista en la revisión de Min/tancada: `GET /{preliq_id}/control-tancadas-jornal` sin `response_model` (regla 16 de GUIA-MODULOS); la tabla Tancadas vs Jornal desborda a lo ancho y cliente, finca y tarea no quedan fijas; encabezados numéricos a la derecha y celdas `mono` a la izquierda; `.pjAlto` con rgba sin token, el badge con `marginLeft` inline y `key={i}` en filas reordenables (2026-10-13).
