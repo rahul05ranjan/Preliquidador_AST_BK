@@ -47,11 +47,14 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
   spec, commiteados en `feature/facturacion-e3` (front y spec) y verificados en el navegador (a 1366 px,
   sin scroll horizontal en Mes pasado, Este año y con el aviso; a 1920, el estado en una línea; el foco
   vuelve al título y al botón que abrió el modal). Los otros dos van como minor.
+  Fase 5: abiertos los PRs hermanos, sin mergear: BK #102 y FT #83 (2026-10-17). El cuerpo del BK #102
+  tiene el porqué, el orden del deploy (la 004 y la 006 con el backend parado, la 005 después) y los
+  minors de los dos repos.
 
 ## Próximo paso
 
-La F5 del usuario contra
-Power BI con el CSV por grupo y los PRs hermanos de la E3a con su OK. Toda migración, primero en
+La F5 del usuario contra Power BI con el CSV por grupo; después, el merge del BK #102 y el FT #83 con
+su OK. Toda migración, primero en
 `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su
 rol (2026-10-13).
 
