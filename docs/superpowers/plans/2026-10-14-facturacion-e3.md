@@ -2,6 +2,13 @@
 
 Fecha: 2026-10-14. Worktrees: backend y front en la rama `feature/facturacion-e3`. La etapa se parte en E3a y E3b (ver 3.3).
 
+> Desactualizado en parte por la spec del 2026-10-17 (`2026-10-17-facturacion-e3a-por-grupo.md`):
+> reemplaza lo que este plan dice del Cruce por tarea, el filtro por meses, la Revisión por tarea
+> y el script del Cruce. La diferencia va por (grupo de tareas, unidad), el filtro es por día y la
+> Revisión guarda grupos y su período (migración `006_revision_por_grupo.sql`). La migración del
+> Período facturado de la E3b pasa de 006 a **007**. Abajo, cada parte afectada lleva su marca; el
+> resto del plan sigue en pie.
+
 ## Aprobación
 
 2026-10-14: el usuario aprobó el plan "como recomendás". Las preguntas abiertas de la sección 5
@@ -20,6 +27,7 @@ históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de lo
 - **Nombre de las tareas de una Revisión** (`revision.tareas[].tarea_nombre`, ruta 14): no se
   guarda en la base. Sale del maestro del campo y, si la tarea no está ahí, de las Líneas del
   mes (la misma regla del Detalle). La 004 no cambia. Lo aplican A8 y A9.
+  > Desactualizado por la spec del 2026-10-17: la Revisión guarda (grupo, unidad), no tareas.
 - **A4b. Par: igualar la consulta del campo a la de Power BI** (el usuario pasó la consulta que usa
   Power BI, 2026-10-14). Coinciden las tres planillas, `estado <> 9`, el tractor 1 de
   pulverización (la nodriza no se factura) y las medidas de maquinaria y tareas manuales. Única
@@ -77,6 +85,7 @@ históricos). Los bocetos de F0 siguen necesitando el OK del usuario antes de lo
 Construir la etapa 3 de Facturación:
 - **El Resumen**: una fila por mes y Cliente, con lo trabajado, lo facturado y el Estado del mes.
 - **El Detalle**: el Cruce de una fila, tarea por tarea, hasta los partes del campo. Incluye la Revisión de diferencia.
+  > Desactualizado por la spec del 2026-10-17: el Detalle va por (grupo, unidad); las tareas se abren dentro del grupo.
 - **El Umbral y el Mes de corte**, que cambia sólo el Admin.
 - **El aviso de tareas facturables sin Unidad sugerida.**
 - **La Precarga**: arma la factura con lo trabajado, el Período facturado, la Fecha de carga y el Precio sugerido.
@@ -159,6 +168,10 @@ Se da por buena cuando se cumplen dos condiciones:
 - `api/resumen.py`
 - Tres modelos: configuración, Revisión y sus tareas.
 - Migraciones `004`, `005` y `006`.
+
+> Desactualizado por la spec del 2026-10-17: la Revisión guarda sus grupos, no sus tareas. Las
+> migraciones son la `004`, la `005` y la `006_revision_por_grupo.sql` en la E3a, y la `007`
+> (Período facturado) en la E3b.
 - `scripts/cruce_facturacion.py`
 
 **Front**
@@ -216,17 +229,35 @@ Descartado:
 
 Recomendación:
 - **Columnas nuevas.** `facturacion_comprobante.periodo_desde` y `periodo_hasta`, DATE NULL, con la `facturacion/006`.
+  > Desactualizado por la spec del 2026-10-17: es la `facturacion/007`; la 006 es `006_revision_por_grupo.sql` (E3a).
 - **`facturacion_linea.fecha` se queda**, NOT NULL y con su índice, y pasa a ser la fecha en la que cuenta la Línea:
   - en un Comprobante cargado a mano, el servicio la iguala a `periodo_desde`;
   - en un histórico, sigue siendo la fecha a facturar de la planilla.
+
+  > Desactualizado por la spec del 2026-10-17 (decisiones 7 y 8): desde la E3a un Comprobante
+  > cuenta sólo si su período entero cae adentro del filtro, y sin Período facturado su período
+  > sale de la fecha de sus Líneas (del 1 al 15, la primera quincena; del 16 en adelante, la
+  > segunda). Una Línea con `fecha = periodo_desde` de una factura del mes entero se leería como
+  > primera quincena: la spec da por hecho que con la E3b la factura del mes entero se reconoce
+  > por su Período facturado, y que el aviso de lo que no entra en el filtro le sirve sin cambios
+  > ("1 factura del mes completo no entra en esta quincena", con "Ver julio entero"). Se replanea
+  > al planear la E3b.
 - **`Comprobante.fecha` pasa a ser la Fecha de carga.**
   - En el alta la pone `hoy()`; en la edición no cambia.
   - La entrada de la API deja de traerla, y las Líneas también.
 - **Los ya cargados a mano.** La 006 les pone como período el mes de su primera Línea, del día 1 al último.
   - Antes, un pre-check confirma que ninguno tenga Líneas en dos meses.
   - En producción se espera que no haya ninguno: la Factura de prueba se borró el 2026-10-13.
+
+  > Desactualizado por la spec del 2026-10-17 (decisión 8): es la 007, y el período de una Línea
+  > ya cargada sale de su fecha (del 1 al 15, la primera quincena; del 16 en adelante, la
+  > segunda), no del mes entero de la primera Línea. El período de un Comprobante es el de sus
+  > Líneas.
 - **Los históricos quedan sin Período (NULL).**
   - Cada Línea cuenta en el mes de su fecha, como en la planilla y en Power BI. Un histórico con Líneas en varios meses cuenta cada una en su mes.
+
+  > Desactualizado por la spec del 2026-10-17 (decisión 8): cada Línea cubre la quincena de su
+  > fecha (el 1, la primera; el 16, la segunda), dentro de su mes.
   - No cambian `historico.py` (`_firma_de_linea`, `_cambio`, `aplicar`, `conciliar`) ni `--reemplazar-cambiados`.
 
 Porqué: el Cruce, el listado y la conciliación siguen leyendo una sola columna, sin ramas por tipo. El cambio de esquema es aditivo, y la vuelta atrás es borrar dos columnas.
@@ -242,6 +273,9 @@ Recomendación:
 - **En el Detalle**, una fila por (tarea, unidad), cada una contra la Cantidad del campo de su unidad, con la marca "en 2 unidades". Cada fila se mide contra el Umbral por separado.
 - **En el Resumen**, la tarea suma en la columna de cada unidad.
 - **Plantas y hectáreas** leen la misma medida: lo esperable es que alguna supere. El mes queda Con diferencia y se resuelve con una Revisión, que guarda (tarea, unidad).
+
+> Desactualizado por la spec del 2026-10-17 (decisión 1): la fila, el Umbral y la Revisión van
+> por (grupo de tareas, unidad); un grupo con dos unidades da dos filas.
 
 Porqué: no esconde nada ni inventa un reparto.
 
@@ -309,6 +343,7 @@ Va al boceto F0.
   - los GET aceptan `refrescar=true`;
   - lo facturado, los adjuntos y las Revisiones se leen siempre frescos de la base propia.
 - **Rango del Resumen.** Hasta 12 meses, sin pasar el mes en curso. Si no, 422 `rango_invalido`. Arranca en el mes pasado.
+  > Desactualizado por la spec del 2026-10-17 (decisión 6): el rango es por día (AAAA-MM-DD), de hasta 12 meses tocados; el Estado se calcula sobre el filtro recortado a cada mes.
 - **Lo facturado.** Las Líneas de la base propia, agregadas en Python como `conciliar`:
   - **Fuera:**
     - los históricos `pendiente_de_facturar`;
@@ -338,6 +373,10 @@ Va al boceto F0.
     | no | — | 0 | no hay fila |
 
     El % es "—" si el campo es 0.
+
+  > Desactualizado por la spec del 2026-10-17 (decisiones 1 y 7): "Supera" se mide por (grupo de
+  > tareas, unidad), no por tarea, y sólo con los Comprobantes cuyo período entero cae en el
+  > filtro. Un grupo con Líneas de un Comprobante que cae en parte afuera no se compara.
 - **Estados del mes**, en orden de urgencia:
 
   | Situación | Estado |
@@ -354,6 +393,10 @@ Va al boceto F0.
   - si S está incluido en T y no está vacío, `diferencia_revisada` y Facturada;
   - si alguna fila de S no está en T, Con diferencia;
   - si S está vacío, Facturada, y la Revisión queda en el registro.
+
+  > Desactualizado por la spec del 2026-10-17 (decisión 5): S y T son (grupo, unidad), y la
+  > Revisión vigente es la del (Cliente, mes, Desde, Hasta): cubre sólo su período exacto.
+  > Además, sin ningún grupo para comparar, el Estado es "Sin comparar en este período" (decisión 7).
 - **Pesos del Detalle.**
   - Precio de cada (tarea, unidad): Σimporte / Σcantidad de las Facturas del mes. Si no hay, el Precio sugerido. Si tampoco hay, la fila queda sin valorizar.
   - TOTAL:
@@ -361,6 +404,9 @@ Va al boceto F0.
     - facturado, que es el neto real;
     - diferencia y %;
     - "N tareas sin precio".
+
+  > Desactualizado por la spec del 2026-10-17 (decisión 4): el TOTAL sigue en pesos y suma sólo
+  > los Comprobantes que cuentan en el filtro, enteros.
 - **`hoy()`** va en `fechas.py`, en UTC-3 fijo.
 
 Descartado:
@@ -393,6 +439,9 @@ Descartado:
 
 Descartado: comparar dentro de la app. Mostraría una medida que el producto no usa.
 
+> Desactualizado por la spec del 2026-10-17 (decisión 9): el script se rehace por (grupo,
+> unidad) y usa el cálculo del módulo, no una cuenta propia (Ticket 5a).
+
 ### 3.2 Contrato de la API
 
 **Errores.**
@@ -410,6 +459,13 @@ Descartado: comparar dentro de la app. Mostraría una medida que el producto no 
 | 16 | `DELETE /api/facturacion/resumen/{cliente_id}/{mes}/revision` | `resumen`, editar | E3a |
 | 17 | `PUT /api/facturacion/configuracion` | admin | E3a |
 | 18 | `GET /api/facturacion/precarga?cliente_id=&desde=AAAA-MM-DD&hasta=AAAA-MM-DD` | `comprobantes`, editar | E3b |
+
+> Desactualizado por la spec del 2026-10-17 (§5, contrato entre repos): en la 13, `desde` y
+> `hasta` pasan a AAAA-MM-DD, con errores nuevos de formato y de rango, y cada fila trae las
+> unidades por grupo, los grupos "fuera del filtro" y los Comprobantes que no entran, con su
+> período. La 14 suma `desde` y `hasta` opcionales (sin ellos, el mes entero) y devuelve grupos
+> con sus tareas y los partes del rango. La 15 y la 16 suman `desde` y `hasta` opcionales y
+> guardan y muestran grupos. Los paths no cambian.
 
 **13. Resumen**
 - Respuesta: `{umbral_pct, mes_corte, mes_en_curso, leido_en, filas, tareas_sin_unidad, actualizado_en, actualizado_por_nombre}` (los dos últimos, `null` si nadie cambió la configuración; A10b).
@@ -493,6 +549,7 @@ Descartado: comparar dentro de la app. Mostraría una medida que el producto no 
      - claves;
      - fechas;
      - el modelo y las migraciones `004` y `005`;
+       > Desactualizado por la spec del 2026-10-17: también la `006_revision_por_grupo.sql`.
      - la lectura del Cruce y el motor;
      - el Resumen, el Detalle y la Revisión;
      - la configuración y el aviso;
@@ -503,6 +560,7 @@ Descartado: comparar dentro de la app. Mostraría una medida que el producto no 
 2. **BK-E3b y FT-E3b, hermanos**, en una rama nueva desde `main` (F8).
    - Incluyen:
      - el Período facturado y la `006`;
+       > Desactualizado por la spec del 2026-10-17: es la `007`.
      - la Fecha de carga;
      - la ruta 18;
      - la Precarga;
@@ -514,6 +572,7 @@ Descartado: comparar dentro de la app. Mostraría una medida que el producto no 
 Por qué se parte:
 - Las dos condiciones de aceptación son independientes.
 - La E3a sólo agrega cosas (tablas nuevas y rutas nuevas); la E3b concentra el cambio de contrato y el único ALTER sobre datos.
+  > Desactualizado por la spec del 2026-10-17: la 006 de la E3a cambia y borra tablas de la propia E3a (la de la Revisión y la de sus tareas), que en producción todavía no existen.
 - La comparación con Power BI puede empezar apenas la E3a está en `testing`.
 - Cada PR queda revisable en dos rondas.
 
@@ -613,6 +672,11 @@ Descartado:
     1. `facturacion_revision_tarea`;
     2. `facturacion_revision`;
     3. `facturacion_configuracion`.
+
+  > Desactualizado por la spec del 2026-10-17: la `006_revision_por_grupo.sql` crea
+  > `facturacion_revision_grupo` (grupo y unidad, con borrado en cascada), borra
+  > `facturacion_revision_tarea` y suma a la Revisión su período (Desde y Hasta), con la unicidad
+  > en (Cliente, mes, Desde, Hasta). `RevisionTarea` se reemplaza.
 - **005:**
   - `DELETE FROM rol_permiso WHERE modulo = 'facturacion' AND pantalla IN ('pendientes', 'cruce')`;
   - "NO DIFERIBLE": se aplica después del reinicio; es idempotente;
@@ -794,6 +858,9 @@ Descartado:
 - **Verde:** la implementación.
 - **Verificación:** `python -m pytest -q tests/facturacion/test_script_cruce.py`. La corrida real es F5.
 
+> Desactualizado por la spec del 2026-10-17 (decisión 9): el script se rehace por (grupo, unidad)
+> con el cálculo del módulo (Ticket 5a).
+
 **A12. Docs después de la aceptación (sin test)**
 - **Archivos:** `plan-facturacion.md` §4, líneas 232 a 239.
 - **Qué:**
@@ -932,6 +999,12 @@ Descartado:
 ### 3.6 BK-E3b (rama nueva, F8)
 
 **B1. Par: modelo y migración 006** (zona sensible: dos rondas)
+
+> Desactualizado por la spec del 2026-10-17: la migración del Período facturado es la **007**
+> (la `006_periodo_facturado.sql` de abajo), porque la 006 es `006_revision_por_grupo.sql` de la E3a. Donde
+> este paso dice 006, es 007, y en `ORDEN.txt` va después de la 006. El UPDATE de los ya cargados
+> a mano no les pone el mes entero: su período sale de la fecha de sus Líneas (decisión 8 de la
+> spec; ver la marca de la decisión 2).
 - **Archivos:**
   - `models.py`: `periodo_desde` y `periodo_hasta`, más el comentario de `LineaComprobante.fecha` (decisión 2);
   - `migrations/facturacion/006_periodo_facturado.sql` (nuevo);
@@ -983,6 +1056,7 @@ Descartado:
   - la edición conserva la fecha original;
   - los dos 422 del período;
   - toda Línea se guarda con `fecha = periodo_desde`;
+    > Desactualizado por la spec del 2026-10-17: ver la marca de la decisión 2 (con la fecha de la Línea, una factura del mes entero se leería como primera quincena).
   - el `mes` del listado es el del período en uno a mano; en un histórico no cambia;
   - el Detalle trae `creado_por_nombre`.
 - **Verde:** la implementación.
@@ -1028,6 +1102,10 @@ Descartado:
 
 **FB1. Par: período de la Precarga**
 - **Archivos:** `periodo.js` y `periodo.test.js`.
+
+> Desactualizado por la spec del 2026-10-17 (decisión 6): el filtro del Resumen de la E3a ya pasa
+> a días, con Quincena pasada, Esta quincena, Mes pasado, Este mes, Últimos 3 meses, Este año y
+> Otro período (Ticket 4). Este paso parte de lo que haya dejado ese ticket.
 - **Rojo:**
   - **Quincena pasada:**
     - el día 10, del 16 al último del mes anterior (incluido febrero bisiesto);
@@ -1165,6 +1243,11 @@ Las filas `rol_id, modulo, pantalla, nivel` se guardan en un archivo local fuera
 
 **F3. La 005 en `testing`**, con el backend nuevo arrancado. Repetir F1: tiene que dar 0 filas.
 
+> Desactualizado por la spec del 2026-10-17 (§5): falta la 006 en `testing`, que ya tiene la 004
+> y la 005. Antes, contar las filas de las dos tablas de la Revisión y respaldarlas; la 006, con
+> OK; después, confirmar que `facturacion_revision_grupo` existe, `facturacion_revision_tarea` no
+> y la Revisión tiene su período. Desde ahí, el código anterior de la E3a falla al leer Revisiones.
+
 **F4. Smoke en el navegador contra `testing`.**
 - **Usuario de smoke:** su clave se lee de `../.claude/smoke-testing.env` y nunca se escribe.
 - **Lo que se prueba:**
@@ -1187,12 +1270,23 @@ Las filas `rol_id, modulo, pantalla, nivel` se guardan en un archivo local fuera
 3. El usuario compara contra Power BI y anota cada diferencia con su causa.
 4. Después va A12.
 
+> Desactualizado por la spec del 2026-10-17: la comparación se hace con el CSV por (grupo,
+> unidad) del Ticket 5a; la F5 por tarea queda obsoleta.
+
 **F6. Cierre de la E3a.**
 - Commits y PRs BK-E3a y FT-E3a, con `--body-file`. El cuerpo lleva las decisiones 1 a 7 condensadas y los minors.
+  > Desactualizado por la spec del 2026-10-17: el cuerpo del BK suma el porqué de volver al grupo de tareas (revierte "Con diferencia se mide por tarea" del BK #100) y las decisiones de la spec.
 - Merge del BK y después del FT, con `gh pr merge N --merge --admin`.
 - `/bitacora`.
 
 **F7. Deploy de la E3a, con OK del usuario.**
+
+> Desactualizado por la spec del 2026-10-17 (§5): en producción, **la 004 y la 006 antes del
+> reinicio, la 005 después**. Ninguna de las tres está allá. `ORDEN.txt` queda 004, 005, 006, que
+> es el orden para una base nueva; en producción va 004, 006, reinicio, 005. Que la 004 cree la
+> tabla de las tareas de la Revisión y la 006 la borre en el mismo deploy no hace daño. El paso 3
+> es "la 004 y después la 006".
+
 1. Respaldo de la base.
 2. F1 en producción, con el respaldo de las filas.
 3. La 004.
@@ -1217,7 +1311,13 @@ WHERE c.es_historico = 0 GROUP BY c.id
 ```
 Si alguno da más de un mes, se corrige o se borra, con OK.
 
+> Desactualizado por la spec del 2026-10-17: es el pre-check de la 007. Con la decisión 8, el
+> período de los ya cargados sale de la quincena de sus Líneas, así que el pre-check se replanea
+> junto con el UPDATE de la 007.
+
 **F10. La 006 en `testing`.**
+
+> Desactualizado por la spec del 2026-10-17: es la **007**.
 1. Confirmar que la base es `testing`.
 2. Confirmar que `SHOW COLUMNS FROM facturacion_comprobante LIKE 'periodo_desde'` viene vacío.
 3. Aplicar una sola vez.
@@ -1240,6 +1340,7 @@ Si alguno da más de un mes, se corrige o se borra, con OK.
 1. Respaldo de la base.
 2. F9 en producción: se espera que no haya Comprobantes a mano.
 3. La 006, antes de reiniciar.
+   > Desactualizado por la spec del 2026-10-17: es la **007**, después de la 004, la 006 y la 005 de la E3a.
 4. BK y FT en la misma ventana, y reinicio.
 5. El banner.
 6. Smoke sin escribir.
@@ -1298,6 +1399,7 @@ Primera ronda: 0 urgent, 3 high (todos del front). Los minor van al cuerpo de lo
    - Mitigación:
      - caché de 10 minutos;
      - rango de hasta 12 meses que arranca en un mes;
+       > Desactualizado por la spec del 2026-10-17: el rango es por día, de hasta 12 meses tocados; Este año se mide contra `testing` en el Ticket 4.
      - indicador de carga;
      - tiempos medidos en F4.
    - Si en producción pasa los 60 segundos, se baja el tope o se mira el timeout, con OK, porque toca el servidor.
@@ -1328,6 +1430,7 @@ Primera ronda: 0 urgent, 3 high (todos del front). Los minor van al cuerpo de lo
      - el `SHOW TABLES` o `SHOW COLUMNS` previo.
 8. **La 006 no es idempotente.**
    - Mitigación: `SHOW COLUMNS` antes, y una sola vez por base.
+   > Desactualizado por la spec del 2026-10-17: es la 007 (Período facturado). La 006 nueva (`006_revision_por_grupo.sql`) es idempotente.
 9. **PDF en dos llamadas.**
    - Mitigación: un aviso visible, y el mes marca Falta comprobante.
 10. **Riesgo alto: la 004 y la 006 en producción.**
@@ -1335,6 +1438,7 @@ Primera ronda: 0 urgent, 3 high (todos del front). Los minor van al cuerpo de lo
       - respaldo de la base antes (F7 y F13);
       - vuelta atrás escrita: la 004, DROP de las tres tablas mientras no tengan datos reales; la 006, DROP de las dos columnas;
       - con datos reales, se restaura el respaldo.
+    > Desactualizado por la spec del 2026-10-17: el riesgo es de la 004 y la 006 de la E3a, que van antes del reinicio, y de la 007 de la E3b (Período facturado), cuya vuelta atrás es el DROP de las dos columnas. La 006 trae su vuelta atrás comentada y sin `;`, como la 002.
 11. **Cambio de contrato en la E3b.**
     - Mitigación: BK y FT en la misma ventana. El módulo está escondido.
 12. **Caché contra datos frescos.**

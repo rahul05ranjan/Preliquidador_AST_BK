@@ -137,12 +137,18 @@ facturado.
   así que lo esperable es que alguna supere: el mes queda Con diferencia y se resuelve con una
   Revisión de diferencia. Descartado: una sola fila con la unidad de mayor importe, porque
   esconde la otra, y prorratear, porque adivina.
+  > Desactualizado por la spec del 2026-10-17: la fila y el Umbral van por grupo de tareas y
+  > unidad, no por tarea (ver §3.4).
 - **Clave del Cruce: Cliente + mes + tarea**, agrupado por grupo de tareas. Lo facturado cuenta
   en el mes de su Período facturado. La finca no es parte de la clave (en la planilla casi
   nunca se carga).
+  > Desactualizado por la spec del 2026-10-17: la clave es Cliente + mes + grupo de tareas +
+  > unidad (ver §3.4).
 - **Se mira por mes completo** (2026-10-14; antes, rango libre que arrancaba en el mes). Una
   diferencia de una quincena puede compensarse en la siguiente; mirar por quincena generaría
   alarmas falsas. El Resumen junta varios meses, una fila por mes y Cliente.
+  > Desactualizado por la spec del 2026-10-17: se mira por día, con atajos de quincena y de
+  > mes; las filas siguen por mes y Cliente (ver "El período que se mira" en §3.4).
 - **La Diferencia en pesos** se valoriza con el precio unitario de lo facturado. No hay lista
   de precios pactados: la tabla de precios que tiene el informe es del proceso de liquidación
   anterior y no aplica.
@@ -153,15 +159,24 @@ facturado.
 
 ### 3.4 El Estado del mes y las Alertas
 
-Rediseñado el 2026-10-14. Cada mes y Cliente tiene un **Estado del mes**; tres de ellos son
-**Alertas de facturación**, que piden que alguien haga algo:
+Rediseñado el 2026-10-14; el criterio de Con diferencia, el período que se mira y la Revisión,
+el 2026-10-17. Cada mes y Cliente tiene un **Estado del mes**, calculado sobre el período que se
+mira recortado a ese mes; tres de ellos son **Alertas de facturación**, que piden que alguien
+haga algo:
 
 - **Pendiente de facturar** (Alerta): tuvo trabajo facturable y no tiene nada facturado. Es
   sólo un estado del mes; el Comprobante histórico sin número posterior al corte no cuenta como
   facturado, y no tiene término propio.
-- **Con diferencia** (Alerta): **por tarea, en cantidades**. Basta que una tarea facturable se
-  aparte más del Umbral de diferencia, para arriba o para abajo; una tarea trabajada y no
-  facturada también cuenta. Reemplaza el criterio por grupo de tareas del diseño anterior.
+- **Con diferencia** (Alerta): **por grupo de tareas y Unidad de facturación, en cantidades**
+  (2026-10-17). Basta que un grupo facturable, en una unidad, se aparte más del Umbral de
+  diferencia, para arriba o para abajo; un grupo trabajado y no facturado también cuenta, y uno
+  facturado sin Cantidad del campo también (su Dif. % es "—"). Un grupo con dos unidades se mide
+  dos veces. Las tareas no avisan. Porqué: las contadoras facturan por grupo, y comparar por
+  tarea daba Con diferencia en meses bien facturados. Reemplaza el criterio por tarea del
+  rediseño del 2026-10-14.
+- **Sin comparar en este período**: ningún grupo del mes se puede comparar, porque todos tienen
+  Líneas de un Comprobante cuyo período no entra entero en el período mirado (ver "El período
+  que se mira"). Va en lugar de Pendiente de facturar y de Con diferencia, y no es una Alerta.
 - **Falta comprobante** (Alerta): algún Comprobante del mes sin Adjunto, salvo los históricos.
 - **Facturada**: ninguno de los anteriores.
 - **Mes en curso**: el mes no terminó. Sólo se controla Falta comprobante, porque es de la
@@ -175,17 +190,39 @@ Reglas:
   urgente: Pendiente de facturar, Con diferencia, Falta comprobante. Pendiente de facturar y
   Facturada van siempre solos. Los cuadros y el filtro de Estado cuentan cada Alerta por
   separado.
-- **Umbral de diferencia**: uno solo para todos los Clientes y tareas, arranca en 5 % y lo
-  cambia sólo el Admin. Uno por Cliente o por tarea se suma si hace falta.
+- **El período que se mira** (2026-10-17). El Resumen y el Detalle se filtran **por día**,
+  con Desde y Hasta y los atajos Quincena pasada, Esta quincena, Mes pasado, Este mes, Últimos
+  3 meses, Este año y Otro período; arranca en Mes pasado. Las filas siguen siendo por mes y
+  Cliente, el Estado se calcula sobre el filtro recortado a cada mes y el Detalle recibe el
+  mismo rango. El campo trae los partes cuya fecha cae en el filtro. Porqué: la mayoría de la
+  facturación es quincenal y sólo por meses no se podía controlar una quincena. Reemplaza al
+  "se mira por mes completo" del 2026-10-14.
+- **Un Comprobante cuenta sólo si su período entero cae adentro del filtro.** Si cae en parte,
+  no cuenta en ningún grupo: los grupos donde tiene Líneas muestran lo facturado "fuera del
+  filtro", sin Diferencia, y no avisan, aunque tengan otro Comprobante entero adentro (grupo
+  mixto). La fila lleva un aviso con cada Comprobante que no entra y un botón que cambia el
+  filtro a su período. Porqué: con los atajos casi no pasa, y repartir medio Comprobante
+  inventaba diferencias. Descartado: el reparto proporcional al campo o a los días.
+- **El período de un Comprobante es el de sus Líneas**, mientras no tenga Período facturado:
+  una Línea con fecha del 1 al 15 cubre la primera quincena del mes, y una del 16 en adelante,
+  la segunda. El usuario confirmó que todo el histórico es así (fechas del 1 o del 16). Una
+  factura del mes completo se reconoce recién con el Período facturado (E3b), y el mismo aviso
+  le sirve sin cambios.
+- **Umbral de diferencia**: uno solo para todos los Clientes y grupos de tareas, arranca en 5 %
+  y lo cambia sólo el Admin. Uno por Cliente o por tarea se suma si hace falta.
 - **Mes de corte**: arranca en octubre de 2026 y lo mueve sólo el Admin, por ejemplo cuando se
   terminó de revisar lo anterior. Reemplaza al corte fijo del diseño anterior.
 - **Revisión de diferencia** (antes, Alerta revisada): sobre un mes Con diferencia, con un
-  comentario obligatorio; guarda quién, cuándo y **las tareas que superaban** en ese momento.
-  Si siguen superando las mismas, el mes queda Facturada con la nota "Diferencia revisada"; si
-  supera una tarea que no estaba, vuelve a Con diferencia; si ya no supera ninguna, queda
-  Facturada y la Revisión, en el registro. Si una diferencia se compensa entre meses, salta igual
-  y se revisa: el sistema no adivina compensaciones. Sólo se revisa Con diferencia: un Pendiente
-  de facturar no se marca como revisado (decisión del usuario).
+  comentario obligatorio; guarda quién, cuándo, **los grupos de tareas, con su unidad, que
+  superaban** en ese momento y **su período** (2026-10-17): el desde y el hasta del filtro
+  recortados al mes de la fila; con Mes pasado, el mes entero. **Cubre sólo ese período
+  exacto**: la de la primera quincena no cubre el mes entero ni al revés. Si en ese período
+  siguen superando sólo grupos guardados, el mes queda Facturada con la nota "Diferencia
+  revisada"; si supera un grupo que no estaba, vuelve a Con diferencia; si ya no supera
+  ninguno, queda Facturada y la Revisión, en el registro. Se deja y se deshace desde el
+  Detalle. Si una diferencia se compensa entre meses, salta igual y se revisa: el sistema no
+  adivina compensaciones. Sólo se revisa Con diferencia: un Pendiente de facturar no se marca
+  como revisado (decisión del usuario).
 - **Nombres**: los de la pantalla en todos lados. Salen "sin facturar", "facturado con
   diferencia", "sin comprobante" y "Alerta revisada".
 
