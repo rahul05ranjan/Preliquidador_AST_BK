@@ -360,7 +360,7 @@ def test_pendiente_facturada_y_con_diferencia(db, servicio, consulta):
     # Cada fila trae sus líneas (grupo, unidad), en cantidades y sin pesos.
     assert filas[DOS] == {
         "cliente_id": DOS, "cliente_nombre": "CLIENTE DOS", "mes": OCTUBRE,
-        "desde": OCTUBRE, "hasta": date(2026, 10, 31),
+        "desde": OCTUBRE, "hasta": date(2026, 10, 31), "en_curso": False,
         "grupos": [linea("MANUALES", "horas_peon", "100", "100")],
         "lineas_superan": 0,
         "estados": ["facturada"], "diferencia_revisada": False,
@@ -404,18 +404,30 @@ def test_antes_del_corte_muestra_sus_numeros(db, servicio, consulta):
     assert fila["diferencia_revisada"] is False
 
 
-def test_mes_en_curso(db, servicio, consulta):
+def test_el_mes_en_curso_se_controla_igual_y_avisa_que_esta_en_curso(db, servicio, consulta):
     consulta.trabajo(UNO, RALEO, NOVIEMBRE, unidades="300")
     consulta.trabajo(DOS, RALEO, NOVIEMBRE, unidades="300")
     comprobante(db, DOS, [(RALEO, "plantas", date(2026, 11, 1), "300", "900")])
 
     filas = por_cliente(servicio.resumen("2026-11-01", "2026-11-30"), NOVIEMBRE)
 
-    assert filas[UNO]["estados"] == ["mes_en_curso"]
-    assert filas[UNO]["grupos"] == [linea("MANUALES", "plantas", "300", "0")]
-    assert filas[UNO]["lineas_superan"] == 0
-    # El mes en curso no se controla, pero un Comprobante sin Adjunto se avisa.
-    assert filas[DOS]["estados"] == ["falta_comprobante", "mes_en_curso"]
+    # Hoy es el 10 de noviembre: el período no terminó y se controla igual.
+    assert filas[UNO]["estados"] == ["pendiente_de_facturar"]
+    assert filas[UNO]["grupos"] == [linea("MANUALES", "plantas", "300", "0", supera=True)]
+    assert filas[UNO]["lineas_superan"] == 1
+    assert filas[DOS]["estados"] == ["falta_comprobante"]
+    assert filas[UNO]["en_curso"] is filas[DOS]["en_curso"] is True
+
+
+def test_un_periodo_del_mes_en_curso_que_ya_termino_no_esta_en_curso(db, servicio, consulta):
+    consulta.trabajo(UNO, RALEO, NOVIEMBRE, unidades="300")
+
+    # Hoy es el 9 en UTC-3 (ver hoy_10_de_noviembre): hasta el 8 ya terminó, y
+    # hasta el 9, hoy, todavía no.
+    fila = por_cliente(servicio.resumen("2026-11-01", "2026-11-08"), NOVIEMBRE)[UNO]
+    assert (fila["estados"], fila["en_curso"]) == (["pendiente_de_facturar"], False)
+    fila = por_cliente(servicio.resumen("2026-11-01", "2026-11-09"), NOVIEMBRE)[UNO]
+    assert fila["en_curso"] is True
 
 
 def test_falta_comprobante_en_uno_a_mano_y_no_en_un_historico(db, servicio, consulta):
@@ -668,7 +680,7 @@ def test_sin_grupo_se_revisa_con_el_grupo_nulo(db, servicio, consulta):
 # ─── Orden y aviso ──────────────────────────────────────────────────────────
 
 def test_orden_mes_descendente_urgencia_y_cliente(db, servicio, consulta):
-    # Noviembre: dos en curso, por nombre.
+    # Noviembre, en curso: dos pendientes, por nombre.
     consulta.trabajo(UNO, PODA, NOVIEMBRE, jornal="10")
     consulta.trabajo(CUATRO, PODA, NOVIEMBRE, jornal="10")
     # Octubre: UNO facturada, DOS pendiente, CUATRO con diferencia, CINCO
@@ -685,8 +697,8 @@ def test_orden_mes_descendente_urgencia_y_cliente(db, servicio, consulta):
     respuesta = servicio.resumen("2026-09-01", "2026-11-30")
 
     assert [(f["mes"], f["cliente_nombre"], f["estados"][0]) for f in respuesta["filas"]] == [
-        (NOVIEMBRE, "CLIENTE CUATRO", "mes_en_curso"),
-        (NOVIEMBRE, "CLIENTE UNO", "mes_en_curso"),
+        (NOVIEMBRE, "CLIENTE CUATRO", "pendiente_de_facturar"),
+        (NOVIEMBRE, "CLIENTE UNO", "pendiente_de_facturar"),
         (OCTUBRE, "CLIENTE CINCO", "pendiente_de_facturar"),
         (OCTUBRE, "CLIENTE DOS", "pendiente_de_facturar"),
         (OCTUBRE, "CLIENTE CUATRO", "con_diferencia"),

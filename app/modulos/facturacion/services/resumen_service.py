@@ -37,8 +37,7 @@ from app.modulos.facturacion.models import (
 )
 from app.modulos.facturacion.services.consulta_externa import invalidar_cache_cruce
 from app.modulos.facturacion.services.cruce import (
-    ANTES_DEL_CORTE, CERO, CON_DIFERENCIA, ESTADOS, MES_EN_CURSO,
-    PENDIENTE_DE_FACTURAR, SIN_COMPARAR, UNIDADES, CruceMes, FilaCruce, FilaGrupo,
+    ANTES_DEL_CORTE, CERO, CON_DIFERENCIA, ESTADOS, PENDIENTE_DE_FACTURAR, SIN_COMPARAR, UNIDADES, CruceMes, FilaCruce, FilaGrupo,
     LineaFacturada, cantidad_en_unidad, cruzar, cruzar_mes, medidas_por_tarea,
     tareas_sin_unidad,
 )
@@ -348,7 +347,7 @@ class ResumenService:
         cruces = cruzar(
             trabajado["filas"], leer_lineas(self.db, inicio, fin), tareas["filas"],
             umbral_pct=configuracion["umbral_pct"],
-            mes_corte=configuracion["mes_corte"], mes_en_curso=en_curso,
+            mes_corte=configuracion["mes_corte"], hoy=fechas.hoy(),
             revisiones=revisadas(revisiones_vigentes(self.db, inicio, fin)),
             desde=inicio, hasta=fin)
         visibles = [c for c in cruces if se_muestra(c)]
@@ -397,6 +396,7 @@ class ResumenService:
             "mes": inicio,
             "desde": cruce.desde,
             "hasta": cruce.hasta,
+            "en_curso": cruce.en_curso,
             "umbral_pct": configuracion["umbral_pct"],
             "mes_corte": configuracion["mes_corte"],
             "leido_en": datos.leido_en,
@@ -429,7 +429,7 @@ class ResumenService:
             trabajado=medidas_por_tarea(partes["filas"]),
             lineas=lineas, tareas=tareas["filas"],
             umbral_pct=configuracion["umbral_pct"],
-            mes_corte=configuracion["mes_corte"], mes_en_curso=mes_en_curso(),
+            mes_corte=configuracion["mes_corte"], hoy=fechas.hoy(),
             revisadas=None if vigente is None else grupos_revisados(vigente),
             desde=desde, hasta=hasta)
 
@@ -564,8 +564,6 @@ def _por_que_no_se_revisa(cruce: CruceMes) -> str:
     """El mensaje de NoRevisable, según el estado del mes."""
     if ANTES_DEL_CORTE in cruce.estados:
         return "El mes es anterior al Mes de corte: no se controla."
-    if MES_EN_CURSO in cruce.estados:
-        return "El mes todavía no terminó: se controla cuando termine."
     if SIN_COMPARAR in cruce.estados:
         return ("Ningún grupo se puede comparar en este período: no hay diferencia "
                 "que revisar.")
@@ -753,7 +751,7 @@ def _linea(grupo: FilaGrupo) -> dict:
 def fila_del_resumen(cruce: CruceMes, cliente_nombre: str | None) -> dict:
     """Una fila del Resumen (ruta 13), que también usa el script de
     aceptación para su CSV: su período (el filtro recortado al
-    mes), las líneas (grupo, unidad) en el orden del motor, cuántas superan
+    mes) y si todavía no terminó, las líneas (grupo, unidad) en el orden del motor, cuántas superan
     (decisión 2 de la spec: cuenta líneas, no grupos), el Estado del mes y los
     Comprobantes que caen en parte afuera del período (decisión 7). Sólo
     cantidades: sin pesos ni TOTAL."""
@@ -763,6 +761,7 @@ def fila_del_resumen(cruce: CruceMes, cliente_nombre: str | None) -> dict:
         "mes": cruce.mes,
         "desde": cruce.desde,
         "hasta": cruce.hasta,
+        "en_curso": cruce.en_curso,
         "grupos": [_linea(g) for g in cruce.grupos],
         "lineas_superan": len(cruce.superan),
         "estados": list(cruce.estados),

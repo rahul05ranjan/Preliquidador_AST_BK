@@ -149,7 +149,7 @@ Mes = Annotated[date, PlainSerializer(lambda mes: mes.strftime("%Y-%m"), return_
 
 # Las claves de estado del mes (decisión 6), en orden de urgencia.
 EstadoMes = Literal["pendiente_de_facturar", "con_diferencia", "falta_comprobante",
-                    "sin_comparar", "facturada", "mes_en_curso", "antes_del_corte"]
+                    "sin_comparar", "facturada", "antes_del_corte"]
 
 
 class ComprobanteSinAdjunto(BaseModel):
@@ -199,6 +199,9 @@ class FilaResumen(BaseModel):
     # El filtro recortado al mes, los dos días incluidos.
     desde: date
     hasta: date
+    # El período todavía no terminó (hasta es hoy o posterior): se controla
+    # igual, pero el campo puede sumar partes.
+    en_curso: bool
     # Las líneas (grupo, unidad): por grupo, "Sin grupo" al final, y por
     # unidad.
     grupos: list[LineaResumen]
@@ -320,6 +323,8 @@ class DetalleResumen(BaseModel):
     # entero), los dos días incluidos.
     desde: date
     hasta: date
+    # Como en FilaResumen: el período todavía no terminó.
+    en_curso: bool
     umbral_pct: Decimal
     mes_corte: Mes
     leido_en: datetime

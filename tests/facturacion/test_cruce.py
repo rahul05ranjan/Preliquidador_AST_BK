@@ -28,9 +28,10 @@ SEPTIEMBRE = date(2026, 9, 1)
 AGOSTO = date(2026, 8, 1)
 OCTUBRE = date(2026, 10, 1)
 
-# El corte en agosto y el mes en curso en octubre: septiembre se controla.
+# El corte en agosto y hoy el 17 de octubre: desde agosto todo se controla,
+# también octubre, el mes en curso.
 MES_CORTE = AGOSTO
-MES_EN_CURSO = OCTUBRE
+HOY = date(2026, 10, 17)
 UMBRAL = D("5")
 
 CLIENTE = 7
@@ -96,7 +97,7 @@ def mes(trabajado=(), lineas=(), *, el_mes=SEPTIEMBRE, revisadas=None,
         cliente_id=CLIENTE, mes=el_mes,
         trabajado=medidas_por_tarea(trabajado), lineas=list(lineas),
         tareas=tareas, umbral_pct=umbral, mes_corte=MES_CORTE,
-        mes_en_curso=MES_EN_CURSO, revisadas=revisadas, **corte)
+        hoy=HOY, revisadas=revisadas, **corte)
 
 
 def fila(cruce, tarea_id, unidad="*"):
@@ -387,7 +388,7 @@ def test_las_lineas_van_por_grupo_con_sin_grupo_al_final_y_por_unidad():
 
 def test_el_orden_de_urgencia():
     assert ESTADOS == ("pendiente_de_facturar", "con_diferencia", "falta_comprobante",
-                       "sin_comparar", "facturada", "mes_en_curso", "antes_del_corte")
+                       "sin_comparar", "facturada", "antes_del_corte")
 
 
 def test_antes_del_corte_va_solo_y_no_supera():
@@ -399,21 +400,63 @@ def test_antes_del_corte_va_solo_y_no_supera():
     assert cruce.diferencia_revisada is False
 
 
-def test_mes_en_curso_solo_y_no_supera():
+def test_el_mes_en_curso_se_controla_y_supera():
     cruce = mes([trabajo(PODA, jornal="10")], el_mes=OCTUBRE)
-    assert cruce.estados == ["mes_en_curso"]
+    assert cruce.estados == ["pendiente_de_facturar"]
+    assert cruce.en_curso is True
     g = grupo(cruce, "MANUALES", "horas_peon")
-    assert g.supera is False
+    assert g.supera is True
     assert g.diferencia == D("-10")
 
 
-def test_mes_en_curso_con_falta_comprobante():
+def test_el_mes_en_curso_con_falta_comprobante_va_solo():
     lineas = [linea(PODA, "horas_peon", "10", comprobante_id=50, adjuntos=0,
                     fecha=date(2026, 10, 1), numero="0001-00000050")]
     cruce = mes([trabajo(PODA, jornal="10", mes=OCTUBRE)], lineas, el_mes=OCTUBRE)
-    assert cruce.estados == ["falta_comprobante", "mes_en_curso"]
+    assert cruce.estados == ["falta_comprobante"]
     assert cruce.comprobantes_sin_adjunto == [
         {"id": 50, "tipo": "factura", "numero": "0001-00000050"}]
+
+
+# ─── El período en curso (plan del 2026-10-17) ──────────────────────────────
+# Hoy es el 17 de octubre: el Estado sale del período filtrado, también en el
+# mes en curso, y `en_curso` dice si ese período todavía no terminó.
+
+def test_la_quincena_pasada_del_mes_en_curso_se_controla_y_ya_termino():
+    cruce = mes([trabajo(PODA, jornal="10", mes=OCTUBRE)], el_mes=OCTUBRE,
+                desde=date(2026, 10, 1), hasta=date(2026, 10, 15))
+    assert cruce.estados == ["pendiente_de_facturar"]
+    assert cruce.en_curso is False
+
+
+def test_un_periodo_que_no_termino_se_controla_igual_y_esta_en_curso():
+    cruce = mes([trabajo(PODA, jornal="10", mes=OCTUBRE)], el_mes=OCTUBRE,
+                desde=date(2026, 10, 16), hasta=date(2026, 10, 31))
+    assert cruce.estados == ["pendiente_de_facturar"]
+    assert cruce.en_curso is True
+
+
+def test_un_periodo_que_termina_hoy_esta_en_curso():
+    cruce = mes([trabajo(PODA, jornal="10", mes=OCTUBRE)],
+                [linea(PODA, "horas_peon", "10", fecha=date(2026, 10, 1))], el_mes=OCTUBRE,
+                desde=date(2026, 10, 1), hasta=date(2026, 10, 17))
+    assert cruce.estados == ["facturada"]
+    assert cruce.en_curso is True
+
+
+def test_un_mes_que_ya_termino_no_esta_en_curso():
+    cruce = mes([trabajo(PODA, jornal="10")])
+    assert cruce.en_curso is False
+
+
+def test_cruzar_dice_en_curso_por_mes_con_el_hasta_recortado():
+    trabajado = [trabajo(PODA, jornal="10"), trabajo(PODA, jornal="10", mes=OCTUBRE)]
+    cruces = cruzar(trabajado, [], TAREAS, umbral_pct=UMBRAL, mes_corte=MES_CORTE,
+                    hoy=HOY,
+                    desde=date(2026, 9, 16), hasta=date(2026, 10, 17))
+    por_mes = {c.mes: (c.estados, c.en_curso) for c in cruces}
+    assert por_mes == {SEPTIEMBRE: (["pendiente_de_facturar"], False),
+                       OCTUBRE: (["pendiente_de_facturar"], True)}
 
 
 def test_pendiente_de_facturar_va_solo():
@@ -674,11 +717,12 @@ def test_una_linea_que_no_cuenta_no_avisa_aunque_caiga_en_parte():
 
 
 def test_en_un_mes_en_gris_el_grupo_queda_fuera_del_filtro_y_el_estado_no_cambia():
-    cruce = mes([trabajo(PODA, jornal="10", mes=OCTUBRE)],
-                [linea(PODA, "horas_peon", "10", fecha=date(2026, 10, 1))],
-                el_mes=OCTUBRE, desde=date(2026, 10, 1), hasta=date(2026, 10, 10))
+    julio = date(2026, 7, 1)
+    cruce = mes([trabajo(PODA, jornal="10", mes=julio)],
+                [linea(PODA, "horas_peon", "10", fecha=julio)],
+                el_mes=julio, desde=julio, hasta=date(2026, 7, 10))
     assert grupo(cruce, "MANUALES", "horas_peon").fuera_del_filtro is True
-    assert cruce.estados == ["mes_en_curso"]
+    assert cruce.estados == ["antes_del_corte"]
 
 
 def test_el_cruce_trae_su_recorte():
@@ -693,7 +737,7 @@ def test_cruzar_recorta_el_filtro_a_cada_mes():
     lineas = [linea(PODA, "horas_peon", "10", fecha=date(2026, 8, 16), comprobante_id=1),
               linea(PODA, "horas_peon", "10", fecha=DIA_1, comprobante_id=2)]
     cruces = cruzar(trabajado, lineas, TAREAS, umbral_pct=UMBRAL, mes_corte=MES_CORTE,
-                    mes_en_curso=MES_EN_CURSO,
+                    hoy=HOY,
                     desde=date(2026, 8, 20), hasta=DIA_15)
     por_mes = {c.mes: c for c in cruces}
     assert (por_mes[AGOSTO].desde, por_mes[AGOSTO].hasta) == (
@@ -715,7 +759,7 @@ def test_cruzar_arma_un_cruce_por_cliente_y_mes_sin_tocar_lo_recibido():
               linea(TRACTOR, "horas_tractor", "3", cliente_id=otro, fecha=date(2026, 8, 16))]
     antes = (copy.deepcopy(trabajado), copy.deepcopy(lineas))
     cruces = cruzar(trabajado, lineas, TAREAS, umbral_pct=UMBRAL, mes_corte=MES_CORTE,
-                    mes_en_curso=MES_EN_CURSO,
+                    hoy=HOY,
                     revisiones={(CLIENTE, SEPTIEMBRE): {("MANUALES", None)}})
     assert [(c.cliente_id, c.mes) for c in cruces] == [
         (CLIENTE, AGOSTO), (otro, AGOSTO), (CLIENTE, SEPTIEMBRE), (otro, SEPTIEMBRE)]

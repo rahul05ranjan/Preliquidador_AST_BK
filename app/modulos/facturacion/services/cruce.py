@@ -46,10 +46,9 @@ FALTA_COMPROBANTE = "falta_comprobante"
 # Ningún grupo de la fila se puede comparar en el filtro (decisión 7).
 SIN_COMPARAR = "sin_comparar"
 FACTURADA = "facturada"
-MES_EN_CURSO = "mes_en_curso"
 ANTES_DEL_CORTE = "antes_del_corte"
 ESTADOS = (PENDIENTE_DE_FACTURAR, CON_DIFERENCIA, FALTA_COMPROBANTE, SIN_COMPARAR,
-           FACTURADA, MES_EN_CURSO, ANTES_DEL_CORTE)
+           FACTURADA, ANTES_DEL_CORTE)
 
 _CENTESIMOS = Decimal("0.01")
 
@@ -158,6 +157,8 @@ class CruceMes:
       sin Adjuntos con alguna Línea que cuenta o que cae en parte en el
       filtro, por id.
     - `desde` y `hasta`: el filtro recortado al mes, los dos incluidos.
+    - `en_curso`: el período todavía no terminó (`hasta` es hoy o
+      posterior). Se controla igual: el campo puede sumar partes.
     - `comprobantes_fuera`: [{id, tipo, numero, desde, hasta}] de los que
       tienen Líneas que cuentan en el Cruce pero caen en parte afuera, con el
       período de esas Líneas; por desde y por id. Es el aviso del Resumen."""
@@ -174,6 +175,7 @@ class CruceMes:
     desde: date | None = None
     hasta: date | None = None
     comprobantes_fuera: list[dict] = field(default_factory=list)
+    en_curso: bool = False
 
 
 def medidas_por_tarea(filas: Iterable[dict]) -> dict[int, Medidas]:
@@ -277,7 +279,7 @@ def _comprobantes_fuera(en_parte: list[LineaFacturada]) -> list[dict]:
 
 def cruzar_mes(*, cliente_id: int, mes: date, trabajado: dict[int, Medidas],
                lineas: Iterable[LineaFacturada], tareas: Iterable[dict],
-               umbral_pct: Decimal, mes_corte: date, mes_en_curso: date,
+               umbral_pct: Decimal, mes_corte: date, hoy: date,
                revisadas: set | None = None, desde: date | None = None,
                hasta: date | None = None) -> CruceMes:
     """El Cruce de un Cliente en un mes.
@@ -287,7 +289,9 @@ def cruzar_mes(*, cliente_id: int, mes: date, trabajado: dict[int, Medidas],
     las que no cuentan y las que no entran en el filtro); `tareas`, el
     maestro de tareas_cruce(); `revisadas`, las (grupo, unidad) que guardó la
     Revisión vigente del período, o None si no hay; `desde` y `hasta`, el
-    filtro recortado al mes (sin ellos, el mes entero)."""
+    filtro recortado al mes (sin ellos, el mes entero); `hoy`, para saber si
+    el período está en curso. Todo mes desde el Mes de corte se controla,
+    también el mes en curso."""
     desde = desde or mes.replace(day=1)
     hasta = hasta or fin_de_mes(mes)
     tareas_por_id = _por_id(tareas)
@@ -322,7 +326,7 @@ def cruzar_mes(*, cliente_id: int, mes: date, trabajado: dict[int, Medidas],
     for tarea_id, unidad in list(facturado) + sorted(fuera - set(facturado)):
         unidades_facturadas[tarea_id].append(unidad)
 
-    controlado = mes_corte <= mes < mes_en_curso
+    controlado = mes >= mes_corte
     filas: list[FilaCruce] = []
     for tarea_id in set(trabajado) | set(unidades_facturadas):
         tarea = tareas_por_id.get(tarea_id, {})
@@ -371,10 +375,8 @@ def cruzar_mes(*, cliente_id: int, mes: date, trabajado: dict[int, Medidas],
 
     superan = {(g.grupo, g.unidad) for g in grupos if g.supera}
     diferencia_revisada = False
-    if mes < mes_corte:
+    if not controlado:
         estados = [ANTES_DEL_CORTE]
-    elif not controlado:
-        estados = [FALTA_COMPROBANTE, MES_EN_CURSO] if falta else [MES_EN_CURSO]
     elif grupos and all(g.fuera_del_filtro for g in grupos):
         estados = [FALTA_COMPROBANTE, SIN_COMPARAR] if falta else [SIN_COMPARAR]
     elif not que_cuentan and not en_parte and any(f.partes > 0 for f in filas):
@@ -404,12 +406,13 @@ def cruzar_mes(*, cliente_id: int, mes: date, trabajado: dict[int, Medidas],
         desde=desde,
         hasta=hasta,
         comprobantes_fuera=_comprobantes_fuera(en_parte),
+        en_curso=hasta >= hoy,
     )
 
 
 def cruzar(trabajado: Iterable[dict], lineas: Iterable[LineaFacturada],
            tareas: Iterable[dict], *, umbral_pct: Decimal, mes_corte: date,
-           mes_en_curso: date, revisiones: dict | None = None,
+           hoy: date, revisiones: dict | None = None,
            desde: date | None = None, hasta: date | None = None) -> list[CruceMes]:
     """El Cruce de cada (Cliente, mes) que tenga trabajo o Líneas, para el
     Resumen y el script de aceptación, ordenado por mes y Cliente.
@@ -417,7 +420,8 @@ def cruzar(trabajado: Iterable[dict], lineas: Iterable[LineaFacturada],
     `trabajado` son las filas de trabajado_por_mes, ya en el filtro; `lineas`,
     las de los meses del rango; `revisiones`, {(cliente_id, mes): las (grupo,
     unidad) de la vigente del período}; `desde` y `hasta`, el filtro, que se
-    recorta a cada mes (sin ellos, los meses enteros).
+    recorta a cada mes (sin ellos, los meses enteros); `hoy`, como en
+    cruzar_mes.
     Un (Cliente, mes) que sólo tiene Líneas que no cuentan también sale: si
     se muestra lo decide quien llama."""
     tareas = list(tareas)
@@ -441,7 +445,7 @@ def cruzar(trabajado: Iterable[dict], lineas: Iterable[LineaFacturada],
             trabajado=medidas_por_tarea(filas_por_clave.get((cliente_id, mes), [])),
             lineas=lineas_por_clave.get((cliente_id, mes), []),
             tareas=tareas, umbral_pct=umbral_pct, mes_corte=mes_corte,
-            mes_en_curso=mes_en_curso,
+            hoy=hoy,
             revisadas=revisiones.get((cliente_id, mes)),
             desde=corte[0], hasta=corte[1]))
     return cruces

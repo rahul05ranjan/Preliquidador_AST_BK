@@ -173,12 +173,6 @@ def _antes_del_corte(db, consulta, cliente_id=UNO):
                 adjuntos=1)
 
 
-def _mes_en_curso(db, consulta, cliente_id=UNO):
-    consulta.parte(cliente_id, PODA, date(2026, 11, 3), jornal="100")
-    comprobante(db, cliente_id, [(PODA, "horas_peon", date(2026, 11, 1), "150", "7500")],
-                adjuntos=1)
-
-
 def _facturada(db, consulta, cliente_id=UNO):
     consulta.parte(cliente_id, PODA, date(2026, 10, 3), jornal="100")
     comprobante(db, cliente_id, [(PODA, "horas_peon", date(2026, 10, 1), "100", "5000")],
@@ -188,7 +182,6 @@ def _facturada(db, consulta, cliente_id=UNO):
 @pytest.mark.parametrize("preparar, mes, estado", [
     (_pendiente, "2026-10", "pendiente_de_facturar"),
     (_antes_del_corte, "2026-09", "antes_del_corte"),
-    (_mes_en_curso, "2026-11", "mes_en_curso"),
     (_facturada, "2026-10", "facturada"),
 ])
 def test_solo_se_revisa_un_mes_con_diferencia(db, servicio, consulta, persona, reloj,
@@ -207,15 +200,33 @@ def test_el_mensaje_de_no_revisable_depende_del_estado(db, servicio, consulta, p
                                                        reloj):
     mensajes = {}
     casos = [(_pendiente, UNO, "2026-10"), (_antes_del_corte, DOS, "2026-09"),
-             (_mes_en_curso, CUATRO, "2026-11"), (_facturada, CINCO, "2026-10")]
+             (_facturada, CINCO, "2026-10")]
     for preparar, cliente_id, mes in casos:
         preparar(db, consulta, cliente_id)
         with pytest.raises(NoRevisable) as error:
             servicio.revisar(cliente_id, mes, "Explicada.", persona.id)
         mensajes[preparar.__name__] = error.value.mensaje
 
-    # Cuatro estados, cuatro mensajes distintos.
-    assert len(set(mensajes.values())) == 4, mensajes
+    # Tres estados, tres mensajes distintos.
+    assert len(set(mensajes.values())) == 3, mensajes
+
+
+def test_un_periodo_en_curso_con_diferencia_se_revisa(db, servicio, consulta, persona,
+                                                      reloj):
+    """Hoy es el 10 de noviembre: la 1.ª quincena de noviembre no terminó y
+    se controla igual, así que también se revisa (plan del 2026-10-17)."""
+    consulta.parte(UNO, PODA, date(2026, 11, 3), jornal="100")
+    comprobante(db, UNO, [(PODA, "horas_peon", date(2026, 11, 1), "150", "7500")],
+                adjuntos=1)
+    periodo = {"desde": "2026-11-01", "hasta": "2026-11-15"}
+    antes = servicio.detalle(UNO, "2026-11", **periodo)
+    assert (antes["estados"], antes["en_curso"]) == (["con_diferencia"], True)
+
+    despues = servicio.revisar(UNO, "2026-11", "Explicada.", persona.id, **periodo)
+
+    assert (despues["estados"], despues["diferencia_revisada"]) == (["facturada"], True)
+    [guardada] = revisiones(db)
+    assert (guardada.desde, guardada.hasta) == (date(2026, 11, 1), date(2026, 11, 15))
 
 
 def test_sin_nada_que_supere_el_409_habla_de_grupos(db, servicio, consulta, persona,
