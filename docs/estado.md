@@ -6,7 +6,7 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Facturación: el Estado del Resumen se controla por el período filtrado y no por el mes (sale "Mes en curso"; un período que no terminó se controla igual, con el aviso "En curso"), y el período se elige en un calendario de rango con los atajos al costado (Ticket 4, sumado a pedido del usuario el mismo día). Plan aprobado el 2026-10-17 en `docs/superpowers/plans/2026-10-17-facturacion-periodo-en-curso.md` de la rama `feature/facturacion-periodo-en-curso` (los dos repos). Fase 4: revisión de código terminada (2 high arreglados, sólo docs; 8 minor a "A futuro"), suite del backend verde y smoke contra `testing` hecho; faltan el `critique` y el `audit` de `impeccable` y el OK del usuario para los PRs.
+- Facturación: el Estado del Resumen se controla por el período filtrado y no por el mes (sale "Mes en curso"; un período que no terminó se controla igual, con el aviso "En curso"), y el período se elige en un calendario de rango con los atajos al costado (Ticket 4, sumado a pedido del usuario el mismo día). Plan aprobado el 2026-10-17 en `docs/superpowers/plans/2026-10-17-facturacion-periodo-en-curso.md` de la rama `feature/facturacion-periodo-en-curso` (los dos repos). Fase 4: revisión de código terminada (2 high arreglados, sólo docs; 8 minor a "A futuro"), suite del backend verde y smoke contra `testing` hecho; `critique` y `audit` de `impeccable` hechos (4 high arreglados y verificados en el navegador; 8 minor a "A futuro"), suite del front verde. Falta el OK del usuario para los PRs.
 
 ## Próximo paso
 
@@ -46,6 +46,12 @@ deploya por avances, escondida: nadie tiene su rol (2026-10-13).
   `textoPeriodo`; código repetido (`etiquetaEnCurso` y `avisoEnCurso`, la clase `.soloLector`, la
   cuenta del mes); `diaElegible` sólo delega; un import y un docstring que se pasan de ancho. El
   detalle va en los cuerpos de los PRs hermanos (2026-10-17).
+- Minors de `impeccable` en el calendario del período, sin tocar: deja armar un rango de más de 12
+  meses (después la pantalla avisa); el atajo activo se distingue sólo por el borde y el tono;
+  `aria-pressed` en los atajos (iría `aria-current`); días y flechas chicos para el público; el
+  `title` de "En curso" no llega por teclado; sin vista previa del rango entre los dos clics; el
+  estilo `.dia:disabled` no se ve y el mes se anuncia dos veces; con el panel desplazado, la línea
+  de los atajos no acompaña. El detalle va en el cuerpo del PR del front (2026-10-17).
 - Limpieza y prolijidad de código de la E3a por grupo, los minors de la revisión sin tocar:
   - nombres confusos;
   - código repetido, también en `_total`;
