@@ -15,9 +15,9 @@ facturación es quincenal (del 1 al 15 y del 16 a fin de mes): no se puede contr
 ## 2. Solución
 
 La diferencia se mide por **grupo de tareas y unidad**, con el Umbral de siempre. El Resumen y el
-Detalle se filtran **por día** (Desde y Hasta, con atajos). Una factura cuenta sólo si su período entero
-cae adentro del filtro; si cae en parte, no cuenta y la fila lo avisa, con un botón para mirar el
-período de la factura. La Revisión guarda los grupos que superaban y el período en que se revisó. El
+Detalle se filtran **por día** (Desde y Hasta, con atajos). Una Línea facturada cuenta sólo si su período
+entero cae adentro del filtro; si cae en parte, no cuenta y la fila lo avisa, con un botón para mirar
+ese período. La Revisión guarda los grupos que superaban y el período en que se revisó. El
 Detalle pierde el panel lateral: las tareas se abren dentro del grupo, y los partes y la Revisión, en
 modales.
 
@@ -57,7 +57,7 @@ modales.
    cantidad y total); se cierra con Cerrar, Escape o un click afuera, y el foco vuelve a la tarea. El
    panel lateral de 360 px se va.
 4. **El TOTAL del Detalle sigue en pesos**, y suma sólo los comprobantes que cuentan en el filtro,
-   enteros.
+   y dentro de ellos sólo las Líneas que cuentan.
 5. **La Revisión guarda los (grupo, unidad) que superaban y su período** (Desde y Hasta: el filtro
    recortado al mes de la fila; con Mes pasado, el mes entero). Cubre sólo ese período exacto: la de la
    1.ª quincena no cubre el mes entero ni al revés. Si después supera otro grupo en ese período, vuelve
@@ -67,26 +67,29 @@ modales.
    Últimos 3 meses, Este año y Otro período. Arranca en Mes pasado. Las filas siguen siendo por mes y
    Cliente; el Estado se calcula sobre el filtro recortado a cada mes; el Detalle recibe el mismo rango.
    El campo trae los partes cuya fecha cae en el filtro.
-7. **Regla simple: un comprobante cuenta sólo si su período entero cae adentro del filtro.** Si cae en
-   parte, no cuenta en ningún grupo, y:
-   - los grupos donde tiene Líneas muestran el Facturado como "fuera del filtro" en gris, sin Dif. ni
-     Dif. %, y no avisan. Vale también para un grupo que además tiene otro comprobante entero adentro:
-     ese grupo no se compara (grupo mixto);
+7. **Regla simple: una Línea cuenta sólo si su período entero cae adentro del filtro.** El período es
+   de cada Línea (decisión 8), no del comprobante entero. Si cae en parte, esa Línea no cuenta, y:
+   - el grupo donde está muestra el Facturado como "fuera del filtro" en gris, sin Dif. ni Dif. %, y
+     no avisa. Vale también para un grupo que además tiene otra Línea entera adentro: ese grupo no se
+     compara (grupo mixto);
    - la fila lleva arriba el aviso, con el texto del boceto aprobado: "1 factura no entra en este
      filtro" / "La Factura 0001-00001234 cubre del 1 al 15 de julio, y el filtro termina el 10. Para
      compararla, mirá la quincena entera." y el botón "Ver del 1 al 15 de julio", que cambia el filtro
      a ese período. Con varios, el título dice "N facturas" y la lista nombra cada una; una Nota de
-     crédito se nombra como tal;
+     crédito se nombra como tal. El aviso nombra el período de las Líneas que caen en parte;
    - si ningún grupo de la fila se puede comparar, el Estado es **"Sin comparar en este período"**
-     (término nuevo del Estado del mes), y no Pendiente de facturar ni Con diferencia.
+     (término nuevo del Estado del mes), y no Pendiente de facturar ni Con diferencia. Falta
+     comprobante sigue apareciendo al lado si corresponde (decisión del usuario, 2026-10-17).
 
    Porqué: la facturación es casi toda quincenal y los filtros también, así que con los atajos el caso
    casi no aparece; repartir media factura inventaba diferencias. Descartado: el reparto proporcional
    al campo o a los días (la "opción A" que se había elegido antes).
 8. **Período de una Línea ya cargada**, por su fecha: el 1 cubre del 1 al 15 y el 16 cubre del 16 a fin
    de mes. El usuario confirmó que todo el histórico es así. Otra fecha (de una carga a mano) se toma
-   igual: del 1 al 15 es la 1.ª quincena y del 16 en adelante, la 2.ª. El período de un comprobante es
-   el de sus Líneas. Una factura del mes entero se reconoce recién con el Período facturado de la E3b;
+   igual: del 1 al 15 es la 1.ª quincena y del 16 en adelante, la 2.ª. Cada Línea cuenta con su propio
+   período: un comprobante histórico con Líneas del 1 y del 16 se compara quincena por quincena, Línea
+   por Línea (decisión del usuario, 2026-10-17; descartado: tomar el mes entero como período del
+   comprobante). Una factura del mes entero se reconoce recién con el Período facturado de la E3b;
    el aviso ya sirve para ella sin cambios ("1 factura del mes completo no entra en esta quincena", con
    "Ver julio entero"), pero en la E3a no se construye ese caso aparte.
 9. **El script del cruce** (el que genera el CSV para comparar contra Power BI) se rehace por (grupo,
@@ -152,6 +155,7 @@ En producción no hay ninguna.
   - el grupo mixto no se compara y no avisa;
   - una fila con todo afuera dice "Sin comparar en este período", no Pendiente de facturar;
   - una Nota de crédito que cae en parte afuera tampoco cuenta;
+  - un comprobante con Líneas del 1 y del 16, con Quincena pasada, cuenta sólo la Línea de esa quincena;
   - una Revisión cubre sólo su período exacto y sólo si todo lo que supera está guardado;
   - la 006 en `ORDEN.txt` después de la 005, con la vuelta atrás sin `;`.
 - La suite va a quedar roja entre tickets: cada ticket termina en verde con los tests de lo que tocó.
@@ -247,9 +251,9 @@ PR: hermanos de la E3a
 
 ### Ticket 4 — El filtro por día y el aviso de lo que no entra
 Qué se construye: Desde y Hasta con los atajos, arrancando en Mes pasado; el contrato pasa a fechas; el
-Estado se calcula sobre el filtro recortado a cada mes; el Detalle y la Revisión reciben el rango; un
-comprobante que cae en parte afuera no cuenta, sus grupos dicen "fuera del filtro" y la fila lleva el
-aviso del boceto con su botón; "Sin comparar en este período" cuando no queda nada para comparar.
+Estado se calcula sobre el filtro recortado a cada mes; el Detalle y la Revisión reciben el rango; una
+Línea que cae en parte afuera no cuenta, su grupo dice "fuera del filtro" y la fila lleva el aviso del
+boceto con su botón; "Sin comparar en este período" cuando no queda nada para comparar.
 Repos: los dos
 Toca: el motor del cruce, el servicio y la API del Resumen, la API del Detalle y de la Revisión, el
 filtro y las pantallas del Resumen y del Detalle

@@ -167,11 +167,11 @@ La comparación, para un Cliente y un mes, entre la Cantidad del campo y lo fact
 de tareas y Unidad de facturación: un grupo con dos unidades se compara dos veces. Se
 mira en un período de días, que puede ser una Quincena, un mes o cualquier rango, recortado a
 cada mes. Cada grupo se abre en sus tareas, y cada tarea en los partes del sistema de campo que
-la forman. Un Comprobante cuenta sólo si su período entero cae adentro del período mirado; si
-cae en parte, no cuenta, y los grupos donde tiene Líneas quedan fuera del filtro: no se
-comparan, aunque tengan otro Comprobante entero adentro.
-_Avoid_: comparar tarea por tarea (las contadoras facturan por grupo de tareas); repartir un
-Comprobante que cae en parte afuera.
+la forman. Una Línea cuenta sólo si su período entero cae adentro del período mirado; si cae en
+parte, no cuenta, y su grupo queda fuera del filtro: no se compara, aunque tenga otra Línea
+entera adentro. El período es de cada Línea, no del Comprobante entero.
+_Avoid_: comparar tarea por tarea (las contadoras facturan por grupo de tareas); repartir una
+Línea que cae en parte afuera.
 
 **Diferencia**:
 Lo facturado menos la Cantidad del campo, para un grupo de tareas en una Unidad de facturación,
@@ -188,9 +188,9 @@ recortado a ese mes:
   facturado también cuenta, y uno facturado sin Cantidad del campo también. Las tareas no la
   generan solas: cuenta el grupo.
 - **Sin comparar en este período**: todos los grupos de tareas del mes quedan fuera del filtro,
-  porque tienen Líneas de un Comprobante cuyo período no entra entero en el período mirado. Va
-  en lugar de Pendiente de facturar y de Con diferencia. No es una Alerta de facturación: se
-  resuelve mirando el período entero del Comprobante.
+  porque tienen Líneas cuyo período no entra entero en el período mirado. Va
+  en lugar de Pendiente de facturar y de Con diferencia; Falta comprobante sigue apareciendo al lado. No es una Alerta de facturación: se
+  resuelve mirando el período entero de esas Líneas.
 - **Falta comprobante**: alguno de sus Comprobantes no tiene ningún Adjunto (salvo los
   Comprobantes históricos).
 - **Facturada**: ninguno de los anteriores. Si tuvo una Revisión de diferencia, lleva la nota

@@ -54,9 +54,9 @@ mismos números que el informe de Power BI que hoy hace ese control.
   - Orden fijo, sin ordenar por columna: el mes más nuevo primero, después el Estado del mes
     más urgente y después el Cliente; dentro del bloque, por grupo ("Sin grupo" al final) y por
     Unidad.
-  - Un grupo con Líneas de un Comprobante que no entra entero en el período muestra el
+  - Un grupo con una Línea cuyo período no entra entero en el período mirado muestra el
     Facturado como "fuera del filtro", en gris, sin Dif. ni Dif. %, y no avisa; tampoco se
-    compara si además tiene otro Comprobante entero adentro. El bloque lleva arriba el aviso
+    compara si además tiene otra Línea entera adentro. El bloque lleva arriba el aviso
     "1 factura no entra en este filtro", con qué días cubre y dónde termina el filtro (por
     ejemplo, "La Factura 0001-00001234 cubre del 1 al 15 de julio, y el filtro termina el 10.
     Para compararla, mirá la quincena entera."), y el botón "Ver del 1 al 15 de julio", que
@@ -83,8 +83,7 @@ mismos números que el informe de Power BI que hoy hace ese control.
     Campo, Facturado, Diferencia y Dif. %. Los grupos que superan el Umbral de diferencia se
     marcan con una etiqueta, no sólo con color; las tareas no avisan. El triángulo de la fila
     abre sus tareas con la Cantidad del campo, y "Sin Unidad sugerida" junto a la tarea que no
-    la tiene. Fila TOTAL en pesos, que suma sólo los Comprobantes que cuentan en el período,
-    enteros.
+    la tiene. Fila TOTAL en pesos, que suma sólo las Líneas que cuentan en el período.
   - El nombre de una tarea abre un modal con sus partes del campo: Fecha, Finca, Supervisor,
     Cantidad y el total. Se cierra con Cerrar, Escape o un click afuera, y el foco vuelve a la
     tarea. No se abre por finca. No hay panel lateral.

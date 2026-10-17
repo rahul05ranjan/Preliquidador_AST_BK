@@ -175,7 +175,7 @@ haga algo:
   tarea daba Con diferencia en meses bien facturados. Reemplaza el criterio por tarea del
   rediseño del 2026-10-14.
 - **Sin comparar en este período**: ningún grupo del mes se puede comparar, porque todos tienen
-  Líneas de un Comprobante cuyo período no entra entero en el período mirado (ver "El período
+  Líneas cuyo período no entra entero en el período mirado (ver "El período
   que se mira"). Va en lugar de Pendiente de facturar y de Con diferencia, y no es una Alerta.
 - **Falta comprobante** (Alerta): algún Comprobante del mes sin Adjunto, salvo los históricos.
 - **Facturada**: ninguno de los anteriores.
@@ -197,15 +197,15 @@ Reglas:
   mismo rango. El campo trae los partes cuya fecha cae en el filtro. Porqué: la mayoría de la
   facturación es quincenal y sólo por meses no se podía controlar una quincena. Reemplaza al
   "se mira por mes completo" del 2026-10-14.
-- **Un Comprobante cuenta sólo si su período entero cae adentro del filtro.** Si cae en parte,
-  no cuenta en ningún grupo: los grupos donde tiene Líneas muestran lo facturado "fuera del
-  filtro", sin Diferencia, y no avisan, aunque tengan otro Comprobante entero adentro (grupo
-  mixto). La fila lleva un aviso con cada Comprobante que no entra y un botón que cambia el
-  filtro a su período. Porqué: con los atajos casi no pasa, y repartir medio Comprobante
-  inventaba diferencias. Descartado: el reparto proporcional al campo o a los días.
-- **El período de un Comprobante es el de sus Líneas**, mientras no tenga Período facturado:
+- **Una Línea cuenta sólo si su período entero cae adentro del filtro.** Si cae en parte, no
+  cuenta: su grupo muestra lo facturado "fuera del filtro", sin Diferencia, y no avisa, aunque
+  tenga otra Línea entera adentro (grupo mixto). La fila lleva un aviso con cada Comprobante
+  que tiene Líneas que no entran y un botón que cambia el filtro al período de esas Líneas.
+  Porqué: con los atajos casi no pasa, y repartir media Línea inventaba diferencias. Descartado: el reparto proporcional al campo o a los días.
+- **Cada Línea tiene su período**, mientras el Comprobante no tenga Período facturado:
   una Línea con fecha del 1 al 15 cubre la primera quincena del mes, y una del 16 en adelante,
-  la segunda. El usuario confirmó que todo el histórico es así (fechas del 1 o del 16). Una
+  la segunda. El usuario confirmó que todo el histórico es así (fechas del 1 o del 16). Un Comprobante con Líneas en las dos quincenas se compara Línea por
+  Línea, cada una en su quincena (decisión del usuario, 2026-10-17). Una
   factura del mes completo se reconoce recién con el Período facturado (E3b), y el mismo aviso
   le sirve sin cambios.
 - **Umbral de diferencia**: uno solo para todos los Clientes y grupos de tareas, arranca en 5 %
