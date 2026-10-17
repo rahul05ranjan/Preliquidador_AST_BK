@@ -4198,3 +4198,59 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 - La E3b (Precarga y Período facturado), en el plan del 2026-10-14.
 - Los 16 minor y los de la 006 y del smoke, en el cuerpo del BK #102 y en "A futuro" de
   `docs/estado.md`.
+
+## 2026-10-17 — Facturación: el Estado se controla por el período filtrado y el período se elige en un calendario (BK #103)
+
+**Mergeado**
+- PR #103 (backend) — el Estado del Resumen se controla por el período filtrado y no por el mes:
+  sale el estado "Mes en curso" y la fila y el Detalle suman `en_curso`. Merge `7b8ca69`.
+- PR #84 (frontend, hermano) — sale "Mes en curso", entra la etiqueta "En curso", y el período se
+  elige en un calendario de rango con los atajos al costado. Merge `15a4550`. Su cuerpo remite al
+  del BK #103 para el porqué del control por período.
+
+**Por frontera**
+- Facturación: `services/cruce.py` recibe la fecha de hoy en lugar del mes en curso; todo mes desde
+  el Mes de corte se controla y `CruceMes` suma `en_curso` (el Hasta, recortado al mes, es hoy o
+  posterior). Sale la constante `MES_EN_CURSO`. `EstadoMes` pierde `"mes_en_curso"`; `FilaResumen`
+  y `DetalleResumen` suman `en_curso: bool`. `mes_en_curso()` y el campo `mes_en_curso` de la
+  respuesta se quedan como tope de Hasta y del Mes de corte. En el front, el calendario de rango
+  (`SelectorMeses.jsx`, con la lógica en `calendario.js`) reemplaza al desplegable de atajos con
+  "Otro período"; el Resumen lleva "En curso" al lado del Estado y el Detalle, una línea de aviso.
+  Suite del backend: 2133 passed, 1 xfailed; del front: 429 passed.
+- Docs: `CONTEXT-facturacion.md` saca "Mes en curso" de los Estados del mes y suma el término
+  Período en curso; `pantallas.md` y `plan-facturacion.md` pasan al calendario y al control del
+  período en curso; el plan de la tarea. En el front, `PRODUCT.md` dice que el control es por
+  período.
+
+**Decisiones**
+- El Estado se controla por el período filtrado: un período sin terminar se controla igual que uno
+  terminado, con el aviso "En curso". Porqué: el control es quincenal; el 17 de octubre, Quincena
+  pasada caía en octubre y salía "Mes en curso", sin Pendiente de facturar ni "Cargar factura",
+  cuando la contadora ya quería facturar esa quincena. Lo pidió y lo eligió el usuario. **Revierte
+  lo del BK #100** (entrada del 2026-10-14: el mes en curso sólo controlaba Falta comprobante).
+  Descartado: seguir sin controlar el mes en curso salvo los PDF.
+- Sin cambios: Antes del corte, el tope de Hasta (fin del mes en curso), el Mes de corte no
+  posterior al mes en curso y la Revisión (se puede revisar un período en curso; si cambian los
+  grupos que superan, vuelve a Con diferencia). Porqué no registrado en el PR.
+- El período se elige en un calendario de rango con los atajos al costado, y un clic en un atajo
+  aplica su rango y cierra. Reemplaza los atajos con "Otro período" de la E3a (entrada anterior).
+  Porqué: el usuario quiere elegir el rango en un calendario a su gusto y eligió esta opción sobre
+  un boceto. Descartado: que el atajo sólo marque el rango y haya que confirmar.
+- A mano, el primer clic marca Desde y el segundo Hasta y aplica (si es anterior, se dan vuelta);
+  no se eligen días después del fin del mes en curso; arranca en Mes pasado; sin librerías nuevas.
+  Porqué no registrado en el PR.
+
+**Estado**
+- Deploy: no. Va al deploy junto con la E3a (BK #102 y FT #83), que todavía no está en producción.
+- Migraciones: ninguna.
+- Verificación: smoke en el navegador contra `testing` con los dos PRs (Quincena pasada con
+  Pendiente de facturar y "Cargar factura", Esta quincena con "En curso", el aviso del Detalle,
+  teclado y Escape del calendario, el rango dado vuelta, 1348 px sin scroll horizontal).
+  `revision-codigo` de dos ejes, una ronda: 0 urgent, 2 high arreglados (sólo docs), 8 minor sin
+  tocar. `impeccable` critique y audit: 0 urgent, 4 high arreglados, 8 minor sin tocar.
+
+**Pendiente**
+- El deploy, con OK, junto con la E3a. Vuelta atrás: revertir los dos PRs juntos (cambia la API).
+- Los 16 minor (8 de la revisión, 8 de `impeccable`), en los cuerpos del BK #103 y el FT #84 y en
+  "A futuro" de `docs/estado.md`.
+- La E3b toma el período del filtro como Período facturado y usa el mismo calendario.

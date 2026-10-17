@@ -6,17 +6,19 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Facturación: el Estado del Resumen se controla por el período filtrado y no por el mes (sale "Mes en curso"; un período que no terminó se controla igual, con el aviso "En curso"), y el período se elige en un calendario de rango con los atajos al costado (Ticket 4, sumado a pedido del usuario el mismo día). Plan aprobado el 2026-10-17 en `docs/superpowers/plans/2026-10-17-facturacion-periodo-en-curso.md` de la rama `feature/facturacion-periodo-en-curso` (los dos repos). Fase 4: revisión de código terminada (2 high arreglados, sólo docs; 8 minor a "A futuro"), suite del backend verde y smoke contra `testing` hecho; `critique` y `audit` de `impeccable` hechos (4 high arreglados y verificados en el navegador; 8 minor a "A futuro"), suite del front verde. Falta el OK del usuario para los PRs.
+- Nada en curso.
 
 ## Próximo paso
 
-Terminar el control por período (arriba); después, la F5 del usuario (control manual contra Power BI) y, con su OK, el deploy de la E3a junto con este cambio; después, la E3b (Precarga y
-Período facturado). Toda migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se
+La F5 del usuario (control manual contra Power BI) y, con su OK, el deploy de la E3a junto con el
+control por período (BK #103 y FT #84); después, la E3b (Precarga y Período facturado, con el mismo
+calendario). Toda migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se
 deploya por avances, escondida: nadie tiene su rol (2026-10-13).
 
 ## Pendientes del usuario
 
 - Facturación E3a (BK #102 y FT #83, mergeados el 2026-10-17): la F5 del usuario, que la hace a mano contra Power BI, sin el CSV del script (2026-10-17), y después el deploy con OK, junto con el front (la 004 y la 006 con el backend parado, la 005 después).
+- Facturación, control por período y calendario (BK #103 y FT #84, mergeados el 2026-10-17): el deploy con OK, junto con la E3a; sin migración.
 - Terceros, etapa 11 de Pitu (BK #101 y FT #82): revisados el 2026-10-15, con la revisión dejada como comentario en los dos PRs (3 urgent y 10 high). No se mergean hasta que Pitu los arregle. El FT #82, además, espera la decisión del usuario sobre la dependencia `html2pdf.js`. Antes del deploy, confirmar en producción lo que da por hecho la migración `terceros/010`.
 - Cargar `TALLER_SHEET_URL` en el `.env` del servidor y reiniciar el backend: hasta entonces las alertas de Terceros responden 502 a propósito (deploy del 2026-09-30).
 - Asignar el rol "Liquidador de terceros" desde Administración a quienes liquiden Terceros (nace sin personas; BK #83, deploy del 2026-10-11).
