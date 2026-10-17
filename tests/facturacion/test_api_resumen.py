@@ -106,6 +106,7 @@ DETALLE = {
               "diferencia_pesos": D("2500.00"), "diferencia_pct": D("50.00"),
               "tareas_sin_precio": 1},
     "revision": {"id": 7, "comentario": "Explicada.",
+                 "desde": date(2026, 10, 1), "hasta": date(2026, 10, 31),
                  "creada_en": datetime(2026, 11, 10, 15, 0),
                  "creada_por_nombre": "PERSONA DE PRUEBA",
                  "grupos": [{"grupo": "MANUALES", "unidad": "horas_peon"}]},
@@ -132,7 +133,8 @@ CLAVES_TAREA = {"tarea_id", "tarea_nombre", "sin_unidad_sugerida",
                 "en_varias_unidades", "campo", "precio", "partes"}
 CLAVES_TOTAL = {"campo_pesos", "facturado_pesos", "diferencia_pesos",
                 "diferencia_pct", "tareas_sin_precio"}
-CLAVES_REVISION = {"id", "comentario", "creada_en", "creada_por_nombre", "grupos"}
+CLAVES_REVISION = {"id", "comentario", "desde", "hasta", "creada_en", "creada_por_nombre",
+                   "grupos"}
 CLAVES_CONFIGURACION = {"umbral_pct", "mes_corte", "actualizado_en",
                         "actualizado_por_nombre"}
 
@@ -310,6 +312,9 @@ def test_el_detalle_sale_con_la_forma_del_contrato():
     assert cuerpo["total"]["tareas_sin_precio"] == 1
     assert set(cuerpo["revision"]) == CLAVES_REVISION
     assert cuerpo["revision"]["creada_en"] == "2026-11-10T15:00:00"
+    # El período, en días (AAAA-MM-DD), para el aviso del Detalle.
+    assert (cuerpo["revision"]["desde"], cuerpo["revision"]["hasta"]) == (
+        "2026-10-01", "2026-10-31")
     assert cuerpo["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
     assert servicio.llamadas == [("detalle", 12, "2026-10", True)]
 
@@ -371,7 +376,7 @@ ERRORES = [
     (DETALLE_GET, MesInvalido("mes"), 422, {"tipo": "mes_invalido", "campo": "mes"}),
     (REVISAR, RevisionInvalida("Falta el comentario."), 422,
      {"tipo": "revision_invalida", "campo": "comentario"}),
-    (REVISAR, NoRevisable("Ninguna tarea supera el Umbral."), 409,
+    (REVISAR, NoRevisable("Ningún grupo supera el Umbral."), 409,
      {"tipo": "no_revisable"}),
     (DESHACER, SinRevision(), 409, {"tipo": "sin_revision"}),
     (CONFIGURAR, ConfiguracionInvalida("umbral_pct", "El Umbral tiene que ser mayor que 0."),
@@ -542,6 +547,8 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(real):
     assert revisado["revision"]["comentario"] == "El campo cargó de menos."
     assert revisado["revision"]["creada_por_nombre"] == "PERSONA DE PRUEBA"
     assert revisado["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
+    assert (revisado["revision"]["desde"], revisado["revision"]["hasta"]) == (
+        "2026-10-01", "2026-10-31")
     # La Revisión guardada por la API cubre el mes entero: el Resumen del mes
     # la toma.
     fila = c.get(f"{F}/resumen?desde=2026-10&hasta=2026-10").json()["filas"][0]

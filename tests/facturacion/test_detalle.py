@@ -529,6 +529,9 @@ def test_la_revision_vigente_trae_quien_y_sus_grupos(db, servicio, consulta, per
     assert detalle["revision"] == {
         "id": vigente.id,
         "comentario": "Acordado con el Cliente.",
+        # El período que cubre: el mes entero.
+        "desde": OCTUBRE,
+        "hasta": date(2026, 10, 31),
         "creada_en": datetime(2026, 11, 5, 12, 30),
         "creada_por_nombre": "PERSONA DE PRUEBA",
         # Por grupo, con Sin grupo al final, como las líneas del Resumen.

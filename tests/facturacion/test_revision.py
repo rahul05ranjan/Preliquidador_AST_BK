@@ -217,6 +217,19 @@ def test_el_mensaje_de_no_revisable_depende_del_estado(db, servicio, consulta, p
     assert len(set(mensajes.values())) == 4, mensajes
 
 
+def test_sin_nada_que_supere_el_409_habla_de_grupos(db, servicio, consulta, persona,
+                                                   reloj):
+    """La diferencia se mide por grupo de tareas y unidad (decisión 1 de la
+    spec de la E3a por grupo): el mensaje no nombra tareas."""
+    _facturada(db, consulta)
+
+    with pytest.raises(NoRevisable) as error:
+        servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
+
+    assert "grupo" in error.value.mensaje
+    assert "tarea" not in error.value.mensaje.lower()
+
+
 def test_un_mes_ya_revisado_no_se_vuelve_a_revisar(db, servicio, consulta, persona, reloj):
     con_diferencia(db, consulta)
     servicio.revisar(UNO, "2026-10", "Explicada.", persona.id)
@@ -285,6 +298,9 @@ def test_devuelve_el_detalle_facturada_y_revisada(db, servicio, consulta, person
     assert detalle["revision"]["id"] == guardada.id
     assert detalle["revision"]["creada_por_nombre"] == "PERSONA DE PRUEBA"
     assert detalle["revision"]["grupos"] == [{"grupo": "MANUALES", "unidad": "horas_peon"}]
+    # El período que muestra el aviso: el mes entero, del 1 al último día.
+    assert (detalle["revision"]["desde"], detalle["revision"]["hasta"]) == (
+        OCTUBRE, date(2026, 10, 31))
     # Y el Resumen dice lo mismo.
     [fila] = servicio.resumen("2026-10", "2026-10")["filas"]
     assert (fila["estados"], fila["diferencia_revisada"]) == (["facturada"], True)

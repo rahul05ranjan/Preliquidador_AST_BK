@@ -280,6 +280,10 @@ class RevisionSalida(BaseModel):
     """La Revisión de diferencia vigente del mes."""
     id: int
     comentario: str
+    # El período que cubre, los dos días incluidos y dentro del mes; hasta el
+    # filtro por día (Ticket 4 de la spec de la E3a por grupo), el mes entero.
+    desde: date
+    hasta: date
     creada_en: datetime
     # None si la persona ya no existe.
     creada_por_nombre: str | None = None

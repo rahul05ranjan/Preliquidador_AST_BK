@@ -444,6 +444,8 @@ class ResumenService:
         return {
             "id": vigente.id,
             "comentario": vigente.comentario,
+            "desde": vigente.desde,
+            "hasta": vigente.hasta,
             "creada_en": vigente.creada_en,
             "creada_por_nombre": persona.nombre if persona else None,
             "grupos": [{"grupo": g.grupo or SIN_GRUPO, "unidad": g.unidad} for g in grupos],
@@ -503,7 +505,7 @@ def _por_que_no_se_revisa(cruce: CruceMes) -> str:
         return "El mes no tiene nada facturado: falta cargar la factura, no revisarla."
     if cruce.diferencia_revisada:
         return "La diferencia de este mes ya está revisada."
-    return "Ninguna tarea supera el Umbral: no hay diferencia que revisar."
+    return "Ningún grupo supera el Umbral: no hay diferencia que revisar."
 
 
 def _validar_rango(desde: date, hasta: date, en_curso: date) -> None:
