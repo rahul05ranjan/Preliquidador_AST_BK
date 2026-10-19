@@ -10,6 +10,8 @@ Tres grupos, todos de la pantalla `comprobantes`:
     AdjuntosService (adjuntos_service).
   - **Lecturas del campo y de sueldos** que usa el alta: clientes activos,
     fincas de un cliente, Empresas emisoras y tareas con su Unidad sugerida.
+  - **Precarga** (ruta 18, E3b): lo trabajado, los precios y la Empresa
+    sugerida para proponer una Factura. Con Editar: es parte del alta.
 
 Si el campo o sueldos no responden, la consulta levanta ExternaNoDisponible y
 `app/main.py` la convierte en 503 para todos los módulos: no se repite acá.
@@ -24,7 +26,7 @@ from app.core.database import get_db_externa, get_db_propia, get_db_sueldos
 from app.modulos.facturacion.permisos import editar_comprobantes, ver_comprobantes
 from app.modulos.facturacion.schemas import (
     AdjuntoSalida, ComprobanteDetalle, ComprobanteEntrada, ComprobanteFila,
-    OpcionMaestro, TareaCampo,
+    OpcionMaestro, Precarga, TareaCampo,
 )
 from app.modulos.facturacion.services.adjuntos_service import (
     AdjuntoInvalido, AdjuntoMuyGrande, AdjuntoNoEncontrado, AdjuntosService,
@@ -36,6 +38,9 @@ from app.modulos.facturacion.services.comprobantes_service import (
     FacturaConNotas, HistoricoMismoNumero, HistoricoNoEditable, LineaInvalida,
 )
 from app.modulos.facturacion.services.consulta_externa import ConsultaExternaService
+from app.modulos.facturacion.services.precarga_service import (
+    ClienteNoEncontrado, PeriodoInvalido, PrecargaService,
+)
 
 # Permisos por pantalla (ADR-0020): cada endpoint declara el suyo y el router
 # no tiene dependencia propia. El alta y la edición reciben a la persona de la
@@ -61,6 +66,13 @@ def get_comprobantes(
     consulta: ConsultaExternaService = Depends(get_consulta_externa),
 ) -> ComprobantesService:
     return ComprobantesService(db_propia, consulta)
+
+
+def get_precarga(
+    db_propia: Session = Depends(get_db_propia),
+    consulta: ConsultaExternaService = Depends(get_consulta_externa),
+) -> PrecargaService:
+    return PrecargaService(db_propia, consulta)
 
 
 def get_adjuntos(db_propia: Session = Depends(get_db_propia)) -> AdjuntosService:
@@ -305,3 +317,28 @@ def listar_tareas(consulta: ConsultaExternaService = Depends(get_consulta_extern
     """Las tareas activas, con la Unidad sugerida y la marca No facturable
     leídas en vivo del campo: la grilla precarga la unidad y avisa."""
     return consulta.obtener_tareas()
+
+
+# ─── Precarga (ruta 18) ─────────────────────────────────────────────────────
+
+@router.get("/precarga", response_model=Precarga,
+            dependencies=[Depends(editar_comprobantes)])
+def precarga(
+    cliente_id: int,
+    desde: str | None = None,
+    hasta: str | None = None,
+    servicio: PrecargaService = Depends(get_precarga),
+):
+    """Lo que hace falta para proponer una Factura del Cliente en el Período
+    facturado (Desde y Hasta, "AAAA-MM-DD", dentro de un mismo mes). Desde y
+    Hasta son opcionales acá y obligatorios en el servicio: el faltante sale
+    como `periodo_invalido` con su campo."""
+    try:
+        return servicio.precarga(cliente_id, desde, hasta)
+    except PeriodoInvalido as error:
+        raise HTTPException(status_code=422, detail={
+            "tipo": "periodo_invalido", "mensaje": error.mensaje,
+            "campo": error.campo,
+        }) from None
+    except ClienteNoEncontrado as error:
+        raise HTTPException(status_code=404, detail=error.mensaje) from None
