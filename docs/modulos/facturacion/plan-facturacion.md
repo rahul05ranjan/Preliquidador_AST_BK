@@ -1,9 +1,9 @@
 # Plan del módulo Facturación
 
 **Estado**: diseño cerrado, sin código. Las dos dependencias ya están entregadas (ver
-"Dependencias"). El plan de implementación se hace **por etapa** con el planificador, en
-`docs/superpowers/plans/`: uno de las cinco etapas con archivos y tests concretos quedaría
-viejo antes de llegar a la mitad (2026-10-11).
+"Dependencias"). La spec de implementación se hace **por etapa**, con sus tickets, en
+`docs/superpowers/plans/`: una de las cinco etapas con archivos y tests concretos quedaría
+vieja antes de llegar a la mitad (2026-10-11).
 **Fecha de la decisión**: 2026-10-08, entrevista sobre la planilla de facturación a clientes y
 el informe de Power BI que la cruza contra el sistema de campo. **Rediseño del flujo**:
 2026-10-14, con un mockup aprobado por el usuario: las pantallas Pendientes y Cruce pasan a
