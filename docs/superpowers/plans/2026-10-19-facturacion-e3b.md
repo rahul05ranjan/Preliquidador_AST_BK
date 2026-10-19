@@ -217,7 +217,7 @@ cualquier mes, porque una Nota corrige lo facturado en ese mes.
 
 ## Tickets
 
-Orden: `1 → 2 → 3 → 4 → 5`, y `6` en paralelo con todos.
+Orden: `1 → 2 → 3 → 4 → 5 → 5b`, y `6` en paralelo con todos.
 
 ### Ticket 1 — El Período facturado en el Comprobante
 Qué se construye: el Comprobante guarda su Período facturado y la fecha de cabecera pasa a ser la Fecha
@@ -331,6 +331,24 @@ Criterios de aceptación:
       Cliente y el mes del Comprobante.
 - [ ] Interfaz con `impeccable`, igual al boceto aprobado.
 PR: el del front de la E3b
+
+### Ticket 5b — El back controla el mes de la Nota de crédito
+Qué se construye: el alta y la edición de una Nota de crédito dan 422 `comprobante_invalido` en
+`periodo_desde` si el Período facturado no queda en el mes de la Factura que corrige. El mes de la
+Factura es el de su Período o, si no tiene (un histórico), el de su primera Línea, como el `mes` del
+listado; una Factura sin Período ni Líneas no tiene mes y no se controla. Hasta el Ticket 5 la regla
+vivía sólo en el front (sumado por el usuario, 2026-10-19).
+Repos: back
+Toca: el servicio de Comprobantes (la validación de la Factura corregida)
+Depende de: Ticket 5
+En paralelo con: Ticket 6
+Decisiones que aplica: 6 (el período de la Nota) y §9
+Criterios de aceptación:
+- [ ] Una Nota con período de otro mes que su Factura da 422 en `periodo_desde`, en el alta y en la
+      edición; con el mismo mes se guarda.
+- [ ] Contra una Factura histórica sin Período cuenta el mes de su primera Línea.
+- [ ] El mensaje dice el mes de la Factura, para que el front lo muestre en el campo.
+PR: el del backend de la E3b
 
 ### Ticket 6 — Los docs de la E3b
 Qué se construye: el glosario de Facturación ajusta el Período propuesto (decisión 6), suma la unidad
