@@ -2,7 +2,7 @@
 
 Sólo lo vivo: lo que está en curso, el próximo paso, lo que espera al usuario y lo que quedó para más adelante.
 Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva abajo). La regla está en
-`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-17**.
+`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-18**.
 
 ## En curso
 
@@ -76,7 +76,6 @@ escondida: nadie tiene su rol (2026-10-13).
 - Limpieza y prolijidad de código de Facturación BK-B (adjuntos), minors de la revisión sin tocar: código repetido (`quitar` y `ComprobantesService.borrar`, `ErrorAdjunto` y `_http_adjunto`, el `rsplit`, el prefijo del 503), `LARGO_NOMBRE` repite el 255 de la columna, mensaje por defecto sin uso, docstrings incompletos o que prometen de más, un test que no controla el bloqueo y dos de forma. El detalle va en el cuerpo del PR de BK-B. El usuario decidió que toda limpieza y prolijidad de código queda para después (2026-10-13).
 - Limpieza y prolijidad de código de Facturación BK-C (histórico), 9 minors de la revisión sin tocar: `pendiente_de_facturar` fuera de la comparación (sólo fallaría si cambia `SIN_NUMERO_FACTURADO_HASTA`); una planilla con la codificación de Windows termina en `UnicodeDecodeError` sin mensaje claro; nombres confusos; lecturas y firmas repetidas y `conteos()` a mano; `LARGO_TAREA_NOMBRE` repite el largo de la columna y una comparación usa `"-"` en vez de `SIN_NUMERO`; motivos como strings sueltos, clave "N"/"S" y la tarea sin maestro como dict; `leer_unidad` sólo delega; docstrings que citan pasos del plan; en el script, sumas y conteos a mano en vez de `Counter`. El detalle va en el cuerpo del BK #99 (2026-10-13).
 - En desarrollo, después de un rato sin uso, la primera lectura de la base de campo de Facturación (las tareas) tardó cerca de un minuto, como si esperara el `read_timeout` sobre una conexión muerta antes de reconectar; otra vez el proxy de Vite dejó colgados pedidos que nunca llegaron al backend. Se vio varias veces en el smoke de FT-A. Mirar en el VPS si la primera carga de Comprobantes tarda así antes de dárselo a las contadoras (2026-10-12).
-- Revisar por qué el planificador tardó cerca de una hora en un plan mediano (plan del 2026-10-12, unidad desde el campo); el usuario lo quiere ver más adelante (2026-10-12).
 - Inicio del núcleo del front, deuda vista con `/impeccable audit` el 2026-10-12: el foco de la Tarjeta casi no se ve (halo y borde por debajo de 3:1, WCAG 1.4.11); el estado sin pantallas es un párrafo chico y gris, sin título ni a quién pedir acceso, y "Elegí dónde trabajar" se muestra igual (2026-10-12).
 - Deuda del núcleo del front vista en la revisión de la Facturación E1: el encabezado de la tabla de Mantenimiento no queda fijo (2026-10-11).
 - Ningún test controla que el rollback comentado de una migración no tenga `;`, salvo en Facturación (el test de la 002 lo controla para la 001 y la 002; BK #94): falta para el resto de los módulos (2026-10-11).

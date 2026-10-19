@@ -4279,3 +4279,23 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 - Borrar del servidor el respaldo de `rol_permiso` cuando ya no haga falta como vuelta atrás (en
   `docs/estado.md`).
 - La E3b (Precarga y Período facturado, con el mismo calendario).
+
+## 2026-10-18 — El flujo pasa a spec con tickets verticales, escrita por quien entrevistó (BK #104)
+
+**Mergeado**
+- PR #104 (backend) — la skill `flujo-preliquidacion` pasa al flujo de spec con tickets verticales; `plan-facturacion.md` dice que la spec se hace por etapa, con sus tickets. Sin PR hermano en el front.
+
+**Por frontera**
+- Docs: cambian `.claude/skills/flujo-preliquidacion/SKILL.md` y `docs/modulos/facturacion/plan-facturacion.md`. Fase 1, "Spec y tickets": la escribe la misma sesión que hizo la entrevista, sin lanzar el `planificador`, en `docs/superpowers/plans/` con nueve partes (Problema, Solución, Historias de usuario, Decisiones cerradas, Riesgo, Decisiones de testeo, Casos borde en pantalla, Fuera de alcance y Preguntas abiertas; las rutas de archivos sólo van en el Riesgo). Los tickets son verticales, con ocho campos (Qué se construye, Repos, Depende de, Toca, En paralelo con, Decisiones que aplica, Criterios de aceptación y PR); dos van en paralelo sólo si cumplen cinco condiciones y antes de mostrar la spec se pasa una lista de control. Fase 2: se aprueban la spec y el corte en tickets, dibujado como `1 → 2 → 3`. Fase 3: el `ejecutor` hace un ticket por vez, planifica el cómo con el código delante, trabaja en pares de test rojo y verde, busca con Grep lo que rompe su cambio y devuelve HECHO, FRENADO o SPEC ROTA. Fase 4: los arreglos de la revisión entran como pasos nuevos de la spec; uno grande entra como ticket nuevo, con OK del usuario.
+
+**Decisiones**
+- La spec con tickets la escribe la sesión que entrevistó, no el `planificador`. Porqué: con el `planificador` un plan mediano tardaba de 40 a 70 minutos; en la E3a la sesión que entrevistó escribió la spec con tickets en unos 4 minutos, y el `ejecutor` planificó cada ticket mirando el código, que es cuando mejor se decide el cómo. El usuario aprobó el flujo después de probarlo en esa etapa. Descartado: seguir con el `planificador` en cada tarea del carril completo (por el tiempo); una spec con archivo por archivo (queda vieja antes de llegar a la mitad).
+- El `planificador` sigue disponible para una tarea enorme, con OK del usuario.
+
+**Estado**
+- Deploy: no (sólo docs y la skill).
+- Migraciones: ninguna.
+- Verificación: sin tests; se releyó la skill entera para controlar que ninguna fase mencionara el flujo viejo.
+
+**Pendiente**
+- Fuera del repo, y por eso no entraron al PR: el agente `ejecutor` y la skill global `revision-codigo` se actualizaron en la máquina del usuario para el mismo flujo; quien trabaje desde otra máquina no los tiene. Vuelta atrás: revertir el merge (vuelve el flujo con `planificador`).
