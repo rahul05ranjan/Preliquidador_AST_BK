@@ -8,13 +8,13 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 - Facturación E3b (Precarga y Período facturado): spec con 6 tickets aprobada el 2026-10-19, en
   `docs/superpowers/plans/2026-10-19-facturacion-e3b.md` (rama `feature/facturacion-e3b` en los dos
-  repos). Fase 3: el Ticket 1 (el Período facturado) está commiteado en las dos ramas y la
-  `facturacion/007` está aplicada en `testing` (2026-10-19); sigue el Ticket 2 (la Precarga de una
-  Factura nueva).
+  repos). Fase 3: los Tickets 1 (el Período facturado) y 2 (la Precarga de una Factura nueva)
+  están commiteados en las dos ramas, y la `facturacion/007` está aplicada en `testing` (2026-10-19);
+  sigue el Ticket 3 (cambiar la unidad, el período o el Cliente con la Precarga abierta).
 
 ## Próximo paso
 
-Terminar el Ticket 2 y seguir con el 3. La `facturacion/007` en producción, con OK; todo deploy, con
+Terminar el Ticket 3 y seguir con el 4. El smoke de la Precarga en el navegador queda para la fase 4. La `facturacion/007` en producción, con OK; todo deploy, con
 OK. Facturación se deploya por avances, escondida: nadie tiene su rol
 (2026-10-13).
 
