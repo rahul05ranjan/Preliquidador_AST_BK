@@ -31,18 +31,19 @@ from app.modulos.facturacion.services.adjuntos_service import (
 from app.modulos.facturacion.services.comprobantes_service import (
     ComprobanteInvalido, ComprobanteModificado, ComprobanteNoEncontrado,
     ComprobanteRepetido, ComprobantesService, FacturaConNotas,
-    HistoricoMismoNumero, HistoricoNoEditable, LineaInvalida,
+    HistoricoMismoNumero, HistoricoNoEditable, LineaInvalida, PeriodoInvalido,
 )
 
 F = "/api/facturacion"
 
 FILA = {
     "id": 5, "tipo": "factura", "numero": "0001-00000123",
-    "fecha": date(2026, 10, 5), "mes": "2026-09", "cliente_id": 12,
+    "fecha": date(2026, 10, 5), "periodo_desde": date(2026, 9, 16),
+    "periodo_hasta": date(2026, 9, 30), "mes": "2026-09", "cliente_id": 12,
     "cliente_nombre": "CLIENTE UNO", "empresa_emisora": "EMPRESA A",
     "es_historico": False, "pendiente_de_facturar": False,
     "cantidad_lineas": 1, "cantidad_adjuntos": 0,
-    "total_neto": Decimal("121133.34"),
+    "total_neto": Decimal("121133.34"), "creado_por_nombre": "PERSONA UNO",
 }
 DETALLE = {
     **FILA,
@@ -60,9 +61,10 @@ DETALLE = {
 }
 ENTRADA = {
     "tipo": "factura", "cliente_id": 12, "empresa_emisora": "empresa a",
-    "numero": "0001-00000123", "fecha": "2026-10-05",
+    "numero": "0001-00000123", "periodo_desde": "2026-09-16",
+    "periodo_hasta": "2026-09-30",
     "factura_corregida_id": None, "actualizado_en": None,
-    "lineas": [{"fecha": "2026-09-16", "tarea_id": 7, "unidad": "plantas",
+    "lineas": [{"tarea_id": 7, "unidad": "plantas",
                 "finca_id": None, "cantidad": "1234.50",
                 "precio_unitario": "98.1234"}],
 }
@@ -244,6 +246,8 @@ def test_el_listado_trae_las_filas():
     assert fila["mes"] == "2026-09"
     assert fila["total_neto"] == "121133.34"
     assert fila["fecha"] == "2026-10-05"
+    assert (fila["periodo_desde"], fila["periodo_hasta"]) == ("2026-09-16", "2026-09-30")
+    assert fila["creado_por_nombre"] == "PERSONA UNO"
 
 
 def test_el_detalle_trae_lineas_notas_y_adjuntos():
@@ -360,6 +364,18 @@ def test_un_comprobante_invalido_es_422_con_el_campo():
                                   "mensaje": "Falta el número.", "campo": "numero"}
 
 
+def test_un_periodo_invalido_es_422_con_su_tipo_y_el_campo():
+    error = PeriodoInvalido("periodo_hasta",
+                            "La fecha final no puede ser anterior a la inicial.")
+    r = _cliente(servicio=ServicioFalso(error=error)).put(f"{F}/comprobantes/5", json=ENTRADA)
+    assert r.status_code == 422
+    assert r.json()["detail"] == {
+        "tipo": "periodo_invalido",
+        "mensaje": "La fecha final no puede ser anterior a la inicial.",
+        "campo": "periodo_hasta",
+    }
+
+
 def test_una_linea_invalida_es_422_con_la_fila_y_el_campo():
     error = LineaInvalida(2, "tarea_id", "Esa tarea no existe o está dada de baja.")
     r = _cliente(servicio=ServicioFalso(error=error)).put(f"{F}/comprobantes/5", json=ENTRADA)
@@ -463,7 +479,10 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(db):
     servicio = ComprobantesService(db, ConsultaFalsa())
     c = _cliente(servicio=servicio)
 
-    r = c.post(f"{F}/comprobantes", json=ENTRADA)
+    # Una `fecha` que llegue, en la cabecera o en la Línea, se ignora.
+    con_fecha = {**ENTRADA, "fecha": "2020-01-01",
+                 "lineas": [{**ENTRADA["lineas"][0], "fecha": "2020-01-01"}]}
+    r = c.post(f"{F}/comprobantes", json=con_fecha)
     assert r.status_code == 201, r.text
     creado = r.json()
     assert creado["empresa_emisora"] == "EMPRESA A"
@@ -472,6 +491,28 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(db):
     assert creado["total_neto"] == "121133.34"
     assert creado["mes"] == "2026-09"
     assert creado["actualizado_en"] is None
+    assert (creado["periodo_desde"], creado["periodo_hasta"]) == ("2026-09-16", "2026-09-30")
+    assert creado["fecha"] != "2020-01-01"
+    assert creado["lineas"][0]["fecha"] == "2026-09-16"
+    # La persona de prueba no está en la base de usuarios.
+    assert creado["creado_por_nombre"] is None
+
+    # Los 422 del período llegan con su tipo y su campo.
+    r = c.post(f"{F}/comprobantes", json={**ENTRADA, "periodo_desde": None})
+    assert r.status_code == 422
+    assert r.json()["detail"] == {"tipo": "comprobante_invalido",
+                                  "mensaje": "Falta el período facturado.",
+                                  "campo": "periodo_desde"}
+    r = c.post(f"{F}/comprobantes", json={**ENTRADA, "periodo_hasta": "2026-10-15"})
+    assert r.status_code == 422
+    assert r.json()["detail"] == {
+        "tipo": "comprobante_invalido",
+        "mensaje": "El período tiene que quedar dentro de un mismo mes.",
+        "campo": "periodo_hasta"}
+    r = c.post(f"{F}/comprobantes", json={**ENTRADA, "periodo_hasta": "2026-09-15"})
+    assert r.status_code == 422
+    assert r.json()["detail"]["tipo"] == "periodo_invalido"
+    assert r.json()["detail"]["campo"] == "periodo_hasta"
 
     ruta = f"{F}/comprobantes/{creado['id']}"
     r = c.put(ruta, json={**ENTRADA, "numero": "0001-00000124"})

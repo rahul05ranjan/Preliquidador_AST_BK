@@ -68,7 +68,9 @@ class Medidas:
 class LineaFacturada:
     """Una Línea de comprobante con lo de su Comprobante que el Cruce usa.
     Cantidad e importe van positivos, como en la base: el signo sale del
-    tipo. La fecha es la de la Línea, y el mes en que cuenta es el suyo."""
+    tipo. La fecha es la de la Línea, y el mes en que cuenta es el suyo.
+    `periodo_desde` y `periodo_hasta` son el Período facturado del
+    Comprobante (spec de la E3b, decisión 1): None en un histórico."""
     comprobante_id: int
     tipo: str
     numero: str | None
@@ -82,6 +84,8 @@ class LineaFacturada:
     unidad: str
     cantidad: Decimal
     importe: Decimal
+    periodo_desde: date | None = None
+    periodo_hasta: date | None = None
 
     @property
     def mes(self) -> date:
@@ -93,7 +97,11 @@ class LineaFacturada:
 
     @property
     def periodo(self) -> tuple[date, date]:
-        """La quincena que cubre la Línea (decisión 8)."""
+        """Lo que cubre la Línea: el Período facturado de su Comprobante y,
+        si no tiene (un histórico), la quincena de su fecha (decisión 8 de la
+        E3a)."""
+        if self.periodo_desde is not None and self.periodo_hasta is not None:
+            return self.periodo_desde, self.periodo_hasta
         return periodo_de_linea(self.fecha)
 
 

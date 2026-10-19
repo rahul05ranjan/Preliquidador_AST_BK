@@ -134,8 +134,10 @@ def leer_lineas(db: Session, desde: date, hasta: date,
                 cliente_id: int | None = None) -> list[LineaFacturada]:
     """Lo facturado entre el mes de desde y el de hasta (los dos incluidos),
     por la fecha de cada Línea: una LineaFacturada por Línea, con lo de su
-    Comprobante y su cantidad de Adjuntos. Sin filtrar: qué cuenta lo decide
-    el motor. Con cliente_id, sólo las de ese Cliente."""
+    Comprobante (su Período facturado incluido) y su cantidad de Adjuntos.
+    Sin filtrar: qué cuenta lo decide el motor. Con cliente_id, sólo las de
+    ese Cliente. En uno cargado a mano la fecha de la Línea es el Desde del
+    período, que cae en un solo mes: la consulta por mes sigue sirviendo."""
     por_adjuntos = (
         select(Adjunto.comprobante_id.label("comprobante_id"),
                func.count(Adjunto.id).label("cantidad"))
@@ -145,6 +147,7 @@ def leer_lineas(db: Session, desde: date, hasta: date,
         select(Comprobante.id, Comprobante.tipo, Comprobante.numero,
                Comprobante.es_historico, Comprobante.pendiente_de_facturar,
                por_adjuntos.c.cantidad, Comprobante.cliente_id,
+               Comprobante.periodo_desde, Comprobante.periodo_hasta,
                LineaComprobante.fecha, LineaComprobante.tarea_id,
                LineaComprobante.tarea_nombre, LineaComprobante.unidad,
                LineaComprobante.cantidad, LineaComprobante.importe)
@@ -164,10 +167,11 @@ def leer_lineas(db: Session, desde: date, hasta: date,
             pendiente_de_facturar=bool(pendiente_de_facturar),
             cantidad_adjuntos=adjuntos or 0, cliente_id=cliente,
             fecha=fecha, tarea_id=tarea_id, tarea_nombre=tarea_nombre,
-            unidad=unidad, cantidad=cantidad, importe=importe)
+            unidad=unidad, cantidad=cantidad, importe=importe,
+            periodo_desde=periodo_desde, periodo_hasta=periodo_hasta)
         for (comprobante_id, tipo, numero, es_historico, pendiente_de_facturar,
-             adjuntos, cliente, fecha, tarea_id, tarea_nombre, unidad, cantidad,
-             importe) in db.execute(consulta).all()
+             adjuntos, cliente, periodo_desde, periodo_hasta, fecha, tarea_id,
+             tarea_nombre, unidad, cantidad, importe) in db.execute(consulta).all()
     ]
 
 

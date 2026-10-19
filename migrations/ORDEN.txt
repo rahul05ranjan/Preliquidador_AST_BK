@@ -58,3 +58,4 @@ facturacion/003_comprobantes.sql
 facturacion/004_resumen.sql
 facturacion/005_borrar_pendientes_y_cruce.sql
 facturacion/006_revision_por_grupo.sql
+facturacion/007_periodo_facturado.sql

@@ -87,7 +87,7 @@ def _http(error: ErrorComprobante) -> HTTPException:
         return HTTPException(status_code=404, detail=error.mensaje)
     if isinstance(error, ComprobanteInvalido):
         return HTTPException(status_code=422, detail={
-            "tipo": "comprobante_invalido", "mensaje": error.mensaje,
+            "tipo": error.tipo, "mensaje": error.mensaje,
             "campo": error.campo,
         })
     if isinstance(error, LineaInvalida):

@@ -81,13 +81,16 @@ _ids = iter(range(1, 10_000))
 def linea(tarea_id, unidad, cantidad, importe="1000", *, tipo="factura",
           comprobante_id=None, es_historico=False, pendiente_de_facturar=False,
           adjuntos=1, cliente_id=CLIENTE, fecha=date(2026, 9, 1),
-          tarea_nombre="DE LA LINEA", numero="0001-00000001"):
+          tarea_nombre="DE LA LINEA", numero="0001-00000001", periodo=(None, None)):
+    """`periodo` es el Período facturado del Comprobante (Desde, Hasta); sin
+    él, como un histórico, cuenta la quincena de la fecha de la Línea."""
     return LineaFacturada(
         comprobante_id=comprobante_id or next(_ids), tipo=tipo, numero=numero,
         es_historico=es_historico, pendiente_de_facturar=pendiente_de_facturar,
         cantidad_adjuntos=adjuntos, cliente_id=cliente_id, fecha=fecha,
         tarea_id=tarea_id, tarea_nombre=tarea_nombre, unidad=unidad,
-        cantidad=D(cantidad), importe=D(importe))
+        cantidad=D(cantidad), importe=D(importe),
+        periodo_desde=periodo[0], periodo_hasta=periodo[1])
 
 
 def mes(trabajado=(), lineas=(), *, el_mes=SEPTIEMBRE, revisadas=None,
@@ -770,3 +773,44 @@ def test_cruzar_arma_un_cruce_por_cliente_y_mes_sin_tocar_lo_recibido():
     assert tareas_sin_unidad(cruces) == [
         {"tarea_id": SIN_UNIDAD, "nombre": "ATADO", "clientes": 2}]
     assert (trabajado, lineas) == antes
+
+
+# ─── El Período facturado del Comprobante (spec de la E3b, decisión 1) ──────
+
+def test_el_periodo_de_la_linea_es_el_de_su_comprobante_y_si_no_tiene_la_quincena():
+    assert linea(PODA, "horas_peon", "1", fecha=DIA_1,
+                 periodo=(DIA_1, DIA_30)).periodo == (DIA_1, DIA_30)
+    assert linea(PODA, "horas_peon", "1", fecha=DIA_1).periodo == (DIA_1, DIA_15)
+    assert linea(PODA, "horas_peon", "1", fecha=DIA_16).periodo == (DIA_16, DIA_30)
+
+
+def test_una_factura_del_mes_entero_no_cuenta_en_una_quincena_y_avisa():
+    # Guardián: cargada a mano del 1 al 30, su Línea lleva la fecha del Desde.
+    # Antes contaba como de la 1.ª quincena.
+    factura = linea(PODA, "horas_peon", "10", comprobante_id=97, fecha=DIA_1,
+                    numero="0001-00000097", periodo=(DIA_1, DIA_30))
+    quincena = mes([trabajo(PODA, jornal="10")], [factura], desde=DIA_1, hasta=DIA_15)
+    assert quincena.lineas == []
+    assert grupo(quincena, "MANUALES", "horas_peon").fuera_del_filtro is True
+    assert quincena.comprobantes_fuera == [
+        {"id": 97, "tipo": "factura", "numero": "0001-00000097",
+         "desde": DIA_1, "hasta": DIA_30}]
+
+
+def test_una_factura_del_mes_entero_cuenta_con_el_mes_entero():
+    factura = linea(PODA, "horas_peon", "10", comprobante_id=98, fecha=DIA_1,
+                    periodo=(DIA_1, DIA_30))
+    entero = mes([trabajo(PODA, jornal="10")], [factura], desde=DIA_1, hasta=DIA_30)
+    assert entero.lineas == [factura]
+    assert entero.comprobantes_fuera == []
+    assert grupo(entero, "MANUALES", "horas_peon").facturado == D("10")
+    assert entero.estados == ["facturada"]
+
+
+def test_un_historico_sin_periodo_sigue_contando_por_la_quincena_de_su_linea():
+    # Guardián: el histórico cuenta igual que antes de la E3b.
+    historico = linea(PODA, "horas_peon", "10", es_historico=True, fecha=DIA_1)
+    quincena = mes([trabajo(PODA, jornal="10")], [historico], desde=DIA_1, hasta=DIA_15)
+    assert quincena.lineas == [historico]
+    assert quincena.comprobantes_fuera == []
+    assert quincena.estados == ["facturada"]

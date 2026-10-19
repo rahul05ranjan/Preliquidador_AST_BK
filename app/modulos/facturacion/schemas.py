@@ -28,8 +28,8 @@ class LineaEntrada(BaseModel):
     `linea_invalida` con la fila y el campo, que es lo que la pantalla usa
     para marcar la fila, y no como la lista genérica de FastAPI.
 
-    Sin importe: lo calcula siempre el backend."""
-    fecha: date
+    Sin importe: lo calcula siempre el backend. Sin fecha: cada Línea guarda
+    el Desde del Período facturado de su Comprobante (E3b)."""
     tarea_id: int
     unidad: str
     finca_id: int | None = None
@@ -40,14 +40,19 @@ class LineaEntrada(BaseModel):
 class ComprobanteEntrada(BaseModel):
     """La entrada de POST y PUT de un Comprobante.
 
-    Empresa, número y fecha son opcionales acá y obligatorios en el servicio,
-    por lo mismo que en la Línea: el faltante sale como `comprobante_invalido`
-    con su campo. El tipo es texto por la misma razón."""
+    Empresa, número y período son opcionales acá y obligatorios en el
+    servicio, por lo mismo que en la Línea: el faltante sale como
+    `comprobante_invalido` con su campo. El tipo es texto por la misma razón.
+
+    Sin fecha: la Fecha de carga la pone el backend (hoy en el alta, y no
+    cambia al editar). Una `fecha` que llegue igual se ignora."""
     tipo: str
     cliente_id: int
     empresa_emisora: str | None = None
     numero: str | None = None
-    fecha: date | None = None
+    # El Período facturado, los dos días incluidos y dentro de un mismo mes.
+    periodo_desde: date | None = None
+    periodo_hasta: date | None = None
     # Obligatoria en una Nota de crédito; en una Factura tiene que ir vacía.
     factura_corregida_id: int | None = None
     # Sólo en el PUT: el `actualizado_en` tal como lo devolvió el detalle
@@ -67,9 +72,14 @@ class ComprobanteFila(BaseModel):
     tipo: str
     # Vacío sólo en un histórico sin número.
     numero: str | None = None
-    # Vacía sólo en un histórico sin FECHA FAC.
+    # La Fecha de carga en uno cargado a mano; en un histórico, su FECHA FAC
+    # (vacía si la planilla no la tenía).
     fecha: date | None = None
-    # "AAAA-MM" de la primera Línea (pregunta 10).
+    # El Período facturado, los dos días incluidos. Vacío en un histórico.
+    periodo_desde: date | None = None
+    periodo_hasta: date | None = None
+    # "AAAA-MM" del período o, si no tiene (un histórico), de la primera
+    # Línea (pregunta 10).
     mes: str | None = None
     cliente_id: int
     cliente_nombre: str
@@ -81,6 +91,9 @@ class ComprobanteFila(BaseModel):
     cantidad_adjuntos: int
     # Con signo: negativo en una Nota de crédito.
     total_neto: Decimal
+    # El nombre de quien lo cargó. Vacío en un histórico (lo cargó la
+    # migración) o si el usuario ya no existe.
+    creado_por_nombre: str | None = None
 
 
 class ComprobanteReferencia(BaseModel):
