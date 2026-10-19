@@ -66,7 +66,10 @@ La misma pantalla edita un Comprobante y carga una Nota de crédito.
    lo cambia da 422 (hoy la E2 lo permite si no hay Notas; si se cargó mal, se borra y se carga de
    nuevo). La Fecha de carga no cambia y se muestra "Fecha de carga · persona". El PDF no es
    obligatorio: se ven los Adjuntos de la E2 y sigue "Borrar comprobante". Un histórico no se edita (ya
-   existe `HistoricoNoEditable`). Se conserva la finca que tenían las Líneas.
+   existe `HistoricoNoEditable`). Se conserva la finca que tenían las Líneas. Las Líneas guardadas
+   cuentan como tocadas a mano (Cantidad y Precio): cambiarles la unidad no las pisa, sólo cambia Campo
+   (decisión 7). Porqué: lo guardado salió del PDF y no se recalcula sin que la contadora lo pida
+   (decidido por el usuario, 2026-10-19).
 4. **"Dejar como están"** deja las Líneas intactas (Cantidad, Precio e importe). Sólo cambia Campo, que
    pasa al período nuevo con la marca de lo que no coincide. Si hay tareas trabajadas en el período sin
    Línea, aparece "N tareas trabajadas en el período no están en la factura", con el botón
@@ -309,9 +312,14 @@ Qué se construye: "Nueva nota de crédito" en Comprobantes abre la Precarga en 
 después la Factura que corrige (desplegable con las Facturas de ese Cliente), el período copiado de ella
 (o la quincena de su primera Línea si es histórica), editable dentro del mes de la Factura; la grilla
 vacía con "Agregar línea" y el Precio sugerido común, sin Campo ni Recalcular; el PDF obligatorio en el
-alta. Editar una Nota abre sin Campo.
+alta. Editar una Nota abre sin Campo. Sale el puente `NuevoComprobante()` de las rutas. Además, la
+vista del Comprobante suma "Ver lo trabajado" (§4, "Siguen del plan de la E3"): lleva al Detalle del
+Cliente y el mes del Período, filtrado por el Período (un histórico, sin Período: el mes de su primera
+Línea, sin filtro), y se muestra sólo con Ver en `resumen` (sumado a este ticket por el usuario,
+2026-10-19).
 Repos: front (el back ya valida la Factura corregida)
-Toca: la lógica de la Precarga del front, la página Precarga, el listado de Comprobantes (el botón)
+Toca: la lógica de la Precarga del front, la página Precarga, el listado de Comprobantes (el botón),
+la vista del Comprobante ("Ver lo trabajado"), las rutas del módulo
 Depende de: Ticket 4
 En paralelo con: Ticket 6
 Decisiones que aplica: 2, 6 (el período de la Nota)
@@ -319,6 +327,8 @@ Criterios de aceptación:
 - [ ] El desplegable muestra sólo Facturas del Cliente elegido; al elegir una, el período se copia.
 - [ ] Un período fuera del mes de la Factura queda en rojo y no se guarda.
 - [ ] Sin PDF, el alta no se guarda; editar una Nota no muestra Campo ni Recalcular.
+- [ ] "Ver lo trabajado" aparece en la vista sólo con Ver en `resumen` y lleva al Detalle del
+      Cliente y el mes del Comprobante.
 - [ ] Interfaz con `impeccable`, igual al boceto aprobado.
 PR: el del front de la E3b
 
