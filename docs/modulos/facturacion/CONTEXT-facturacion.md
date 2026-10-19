@@ -49,7 +49,9 @@ no lo lee: registra lo emitido ahí y guarda su número para poder encontrarlo.
 **Comprobante**:
 Lo que el grupo le emite a un Cliente en el Sistema contable: una Factura o una Nota de
 crédito. Tiene Cliente, Empresa emisora, número del Sistema contable, Fecha de carga, Período
-facturado, sus Líneas y sus Adjuntos. Se identifica por Empresa emisora y número.
+facturado, sus Líneas y sus Adjuntos. Se identifica por Empresa emisora y número. Su tipo,
+Factura o Nota de crédito, queda fijo: al editarlo no se cambia, y uno cargado con el tipo
+equivocado se borra y se carga de nuevo.
 _Avoid_: "factura" para hablar de los dos tipos a la vez.
 
 **Factura**:
@@ -57,8 +59,12 @@ Comprobante que le cobra al Cliente las tareas hechas. Si se olvidó facturar al
 otra Factura, no se corrige la anterior.
 
 **Nota de crédito**:
-Comprobante que corrige una Factura hacia abajo. Apunta a la Factura que corrige, y sus
-Líneas restan en el Cruce.
+Comprobante que corrige una Factura hacia abajo. Apunta a la Factura que corrige, que es del
+mismo Cliente, y sus Líneas restan en el Cruce. Se carga desde Comprobantes, nunca desde el
+Resumen: primero se elige el Cliente y después la Factura que corrige. Su Período facturado
+queda dentro del mes de esa Factura, porque corrige lo facturado en ese mes. El mes de la
+Factura es el de su Período facturado o, si es un Comprobante histórico, el de su primera
+Línea. Las Líneas de la Nota no salen de lo trabajado: se cargan a mano.
 
 **Fecha de carga**:
 El día en que se registró el Comprobante en Facturación. La pone el sistema y no se cambia. Un
@@ -67,9 +73,9 @@ _Avoid_: confundirla con el Período facturado, que es lo que decide en qué mes
 
 **Período facturado**:
 Los días de trabajo que cobra o corrige el Comprobante: un desde y un hasta, siempre dentro de
-un mismo mes, que es el mes en que cuenta lo facturado. Se propone solo (el mes desde el que se
-abrió la Precarga, o el mes anterior a la Fecha de carga) y quien carga lo puede cambiar a una
-quincena, a otro mes o a los días que quiera de un mismo mes.
+un mismo mes, que es el mes en que cuenta lo facturado. Se propone solo (el Período propuesto)
+y quien carga lo puede cambiar a una quincena, a otro mes o a los días que quiera de un mismo
+mes. El de una Nota de crédito sólo cambia dentro del mes de la Factura que corrige.
 _Avoid_: un período que cruce de un mes a otro.
 
 **Línea de comprobante**:
@@ -101,10 +107,31 @@ tiene Fecha de carga: su fecha es la de la factura que anotó la planilla, si la
 
 **Precarga**:
 El Comprobante que el módulo arma solo para que se cargue: una Línea por tarea trabajada en el
-Período facturado, con la Cantidad del campo, la Unidad sugerida y el Precio sugerido, y la
-Empresa emisora de la última Factura al Cliente. Quien carga completa el número y el Adjunto, y
-puede cambiar todo. Si cambia el Período facturado, las Líneas se recalculan sólo si lo
-confirma, porque se pierde lo que cambió a mano.
+Período facturado, que arranca en el Período propuesto, con la Unidad propuesta, la Cantidad
+del campo y el Precio sugerido, y la Empresa emisora de la última Factura al Cliente. Quien
+carga completa el número y el Adjunto, y puede cambiar todo. Si cambia el Período facturado o
+el Cliente, las Líneas se recalculan sólo si lo confirma, porque se pierde lo que cambió a mano;
+si no, quedan como están, y las tareas trabajadas en el período nuevo que no tienen Línea se
+pueden agregar. En una Nota de crédito no arma Líneas: se cargan a mano, con el Precio
+sugerido. Un Comprobante ya cargado se edita en la misma Precarga, con sus Líneas guardadas y
+sin recalcular, porque salieron del PDF; un Comprobante histórico no se edita.
+
+**Período propuesto**:
+El Período facturado con que se abre la Precarga, según desde dónde se abre: desde una fila del
+Resumen, el período que se miraba, recortado al mes de la fila; desde Comprobantes, para una
+Factura nueva, el mes anterior al de la Fecha de carga, entero; en una Nota de crédito, el de la
+Factura que corrige, o la Quincena de su primera Línea si es un Comprobante histórico. Quien
+carga lo puede cambiar.
+
+**Unidad propuesta**:
+La Unidad de facturación con que la Precarga arma cada Línea: la de la última Factura al mismo
+Cliente por la misma tarea, sin contar las Notas de crédito, o la Unidad sugerida si el Cliente
+todavía no tiene facturada esa tarea. Quien carga la puede cambiar, porque algunos Clientes, por
+arreglos propios, facturan una tarea en otra unidad: por ejemplo, en horas de tractor una que
+se factura en plantas. Al cambiarla, la Cantidad pasa a lo trabajado en la unidad nueva y el
+Precio sugerido al de esa unidad, salvo lo que se cambió a mano.
+_Avoid_: confundirla con la Unidad sugerida, que es de la tarea para todos los Clientes; una
+unidad fija por Cliente.
 
 **Precio sugerido**:
 El precio unitario de la última Factura al mismo Cliente por la misma tarea y en la misma
@@ -144,11 +171,11 @@ tarea); confundirla con el Grupo de pago de Preliquidación (cómo se le paga al
 el Grupo de tareas (el agrupador funcional).
 
 **Unidad sugerida**:
-La Unidad de facturación que cada tarea del sistema de campo trae por defecto: precarga la
-Línea de comprobante al elegir la tarea, y es la que usa el Cruce para una tarea que todavía no
-tiene Líneas en el mes. No obliga: la Línea puede facturar en otra. Una tarea facturable sin
-Unidad sugerida genera un aviso. Se define en el sistema de campo, en cada tarea; Facturación la
-lee y no la cambia.
+La Unidad de facturación que cada tarea del sistema de campo trae por defecto: es la Unidad
+propuesta de una tarea que el Cliente todavía no tiene facturada, y es la que usa el Cruce para
+una tarea que todavía no tiene Líneas en el mes. No obliga: la Línea puede facturar en otra.
+Una tarea facturable sin Unidad sugerida genera un aviso. Se define en el sistema de campo, en
+cada tarea; Facturación la lee y no la cambia.
 
 **No facturable**:
 La marca de una tarea del sistema de campo que no se le factura a ningún Cliente (por ejemplo,
