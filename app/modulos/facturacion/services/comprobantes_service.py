@@ -89,7 +89,7 @@ class HistoricoNoEditable(ErrorComprobante):
 
 class FacturaConNotas(ErrorComprobante):
     mensaje = ("Esta factura tiene notas de crédito: no se puede borrar ni "
-               "cambiar de Cliente o de tipo.")
+               "cambiar de Cliente.")
 
 
 class ComprobanteModificado(ErrorComprobante):
@@ -177,20 +177,23 @@ class ComprobantesService:
         validaciones que el alta, y sella quién y cuándo editó (el modelo no
         tiene onupdate a propósito: el reemplazo de un histórico por el script
         no es una edición). La Fecha de carga no cambia: la cabecera validada
-        no la trae."""
+        no la trae. El tipo queda fijo (E3b): si se cargó mal, se borra y se
+        carga de nuevo."""
         comprobante = self._modificable(comprobante_id)
-        cambia_cliente_o_tipo = (entrada.cliente_id != comprobante.cliente_id
-                                 or entrada.tipo != comprobante.tipo)
+        if entrada.tipo != comprobante.tipo:
+            raise ComprobanteInvalido(
+                "tipo", "El tipo de un comprobante no se cambia. Si se cargó mal, "
+                        "borralo y cargalo de nuevo.")
+        cambia_cliente = entrada.cliente_id != comprobante.cliente_id
         # Edición simultánea (pregunta 18): el PUT trae el `actualizado_en`
         # que le dio el detalle (null si nunca se editó). Si no es el de la
         # base, otra persona guardó en el medio y no se pisa su trabajo. Se
         # compara exacto porque el sello va sin microsegundos (ver abajo).
         if entrada.actualizado_en != comprobante.actualizado_en:
             raise ComprobanteModificado()
-        # Una Factura con Notas de crédito no cambia de Cliente ni de tipo: las
-        # Notas quedarían corrigiendo una factura de otro Cliente, o una que ya
-        # no es factura.
-        if cambia_cliente_o_tipo and self._tiene_notas(comprobante.id):
+        # Una Factura con Notas de crédito no cambia de Cliente: las Notas
+        # quedarían corrigiendo una factura de otro Cliente.
+        if cambia_cliente and self._tiene_notas(comprobante.id):
             raise FacturaConNotas()
 
         cabecera = self._validar_cabecera(entrada, actual=comprobante)
@@ -244,7 +247,7 @@ class ComprobantesService:
         # ya sellada, el control de Notas se repite con lectura bloqueante: en
         # MySQL ve lo último confirmado, y una Nota que llega después espera a
         # este guardado (ver _validar_factura_corregida).
-        if cambia_cliente_o_tipo and self._tiene_notas(comprobante.id, bloquear=True):
+        if cambia_cliente and self._tiene_notas(comprobante.id, bloquear=True):
             self.db.rollback()
             raise FacturaConNotas()
 
@@ -537,7 +540,7 @@ class ComprobantesService:
                 "factura_corregida_id",
                 "Una Nota de crédito tiene que decir qué factura corrige.")
         # Lectura bloqueante compartida (R4): si otra persona está cambiando
-        # de tipo o de Cliente esa Factura, en MySQL se espera a que confirme
+        # de Cliente esa Factura, en MySQL se espera a que confirme
         # y se valida contra lo confirmado. Con with_for_update, `get` consulta
         # la base (y toma el bloqueo) aunque la fila ya esté en la sesión.
         factura = self.db.get(Comprobante, entrada.factura_corregida_id,

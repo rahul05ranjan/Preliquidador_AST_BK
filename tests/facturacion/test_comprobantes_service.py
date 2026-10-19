@@ -622,15 +622,51 @@ def test_una_factura_con_notas_no_cambia_de_cliente(servicio, db, con_tercer_cli
     assert db.get(Comprobante, factura.id).cliente_id == 1
 
 
-def test_una_factura_con_notas_no_cambia_de_tipo(servicio, db):
+# El tipo queda fijo desde la E3b (decisión 3): si se cargó mal, se borra y
+# se carga de nuevo. Vale con o sin Notas de crédito.
+
+def _sin_tocar(db, comprobante_id, tipo):
+    db.expire_all()
+    guardado = db.get(Comprobante, comprobante_id)
+    assert guardado.tipo == tipo
+    assert guardado.actualizado_en is None
+
+
+def test_una_factura_sin_notas_no_pasa_a_nota_de_credito(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    otra = servicio.crear(entrada(numero="A 0002"), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(factura.id, nota(otra.id), usuario_id=OTRO_USUARIO)
+    assert error.value.campo == "tipo"
+    assert error.value.tipo == "comprobante_invalido"
+    assert error.value.mensaje == (
+        "El tipo de un comprobante no se cambia. Si se cargó mal, borralo y "
+        "cargalo de nuevo.")
+    _sin_tocar(db, factura.id, "factura")
+
+
+def test_una_nota_de_credito_no_pasa_a_factura(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(nc.id, entrada(numero="NC 0001"), usuario_id=OTRO_USUARIO)
+    assert error.value.campo == "tipo"
+    _sin_tocar(db, nc.id, "nota_credito")
+
+
+def test_una_factura_con_notas_tampoco_cambia_de_tipo(servicio, db):
+    # Antes era el 409 de la Factura con Notas; ahora el tipo es fijo para
+    # todos, así que sale el 422 del tipo.
     factura = servicio.crear(entrada(), usuario_id=USUARIO)
     otra = servicio.crear(entrada(numero="A 0002"), usuario_id=USUARIO)
     servicio.crear(nota(factura.id), usuario_id=USUARIO)
 
-    with pytest.raises(FacturaConNotas):
+    with pytest.raises(ComprobanteInvalido) as error:
         servicio.editar(factura.id, nota(otra.id, numero="A 0001"), usuario_id=USUARIO)
-    db.expire_all()
-    assert db.get(Comprobante, factura.id).tipo == "factura"
+    assert error.value.campo == "tipo"
+    _sin_tocar(db, factura.id, "factura")
 
 
 def test_una_factura_con_notas_si_cambia_lo_demas(servicio, db):
@@ -678,12 +714,13 @@ def test_pasar_a_un_cliente_de_baja_al_editar_no_se_permite(servicio, db):
 
 
 def test_una_nota_de_credito_no_se_corrige_a_si_misma(servicio, db):
-    # Una Factura sin notas que pasa a Nota de crédito no puede apuntarse a sí
-    # misma: después del PUT ya no sería una Factura (regla 5).
-    c = servicio.crear(entrada(), usuario_id=USUARIO)
+    # Una Nota que se edita no puede apuntarse a sí misma: no es una Factura
+    # (regla 5).
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
 
     with pytest.raises(ComprobanteInvalido) as error:
-        servicio.editar(c.id, nota(c.id), usuario_id=OTRO_USUARIO)
+        servicio.editar(nc.id, nota(nc.id), usuario_id=OTRO_USUARIO)
     assert error.value.campo == "factura_corregida_id"
 
 
@@ -1245,18 +1282,19 @@ def test_una_nota_con_el_numero_de_un_historico_del_cliente_se_da_de_alta(
     assert error.value.comprobante_id == viejo.id
 
 
-def test_pasar_una_factura_a_nota_con_el_numero_de_otra_nota_es_repetido(
-        servicio, db):
+def test_editar_una_nota_al_numero_de_otra_nota_es_repetido(servicio, db):
+    # El tipo queda fijo desde la E3b: una Factura ya no pasa a Nota, pero una
+    # Nota que se edita sigue numerando con las Notas de su Empresa.
     corregida = servicio.crear(entrada(numero="A 0001"), usuario_id=USUARIO)
     otra_nota = servicio.crear(nota(corregida.id, numero="NC 0001"), usuario_id=USUARIO)
-    c = servicio.crear(entrada(numero="NC 0001"), usuario_id=USUARIO)
+    c = servicio.crear(nota(corregida.id, numero="NC 0002"), usuario_id=USUARIO)
 
     with pytest.raises(ComprobanteRepetido) as error:
         servicio.editar(c.id, nota(corregida.id, numero="NC 0001"),
                         usuario_id=OTRO_USUARIO)
     assert error.value.comprobante_id == otra_nota.id
     db.expire_all()
-    assert db.get(Comprobante, c.id).tipo == "factura"
+    assert db.get(Comprobante, c.id).numero == "NC 0002"
 
 
 # ═══ R4: una Nota cargada mientras su Factura cambia (revisión de BK-A) ═════
@@ -1286,23 +1324,6 @@ def _sigue_siendo_factura_del_cliente_1(sesion, factura_id, notas_de_b):
     assert (factura.tipo, factura.cliente_id, factura.numero) == ("factura", 1, "A 0001")
     assert factura.actualizado_en is None
     assert sesion.get(Comprobante, notas_de_b[0].id).factura_corregida_id == factura_id
-
-
-def test_una_nota_cargada_mientras_la_factura_pasa_a_nota_frena_el_cambio(
-        dos_sesiones, monkeypatch):
-    sesion_a, sesion_b = dos_sesiones
-    consulta_a = ConsultaFalsa()
-    servicio_a = ComprobantesService(sesion_a, consulta_a)
-    servicio_b = ComprobantesService(sesion_b, ConsultaFalsa())
-    factura = servicio_a.crear(entrada(numero="A 0001"), usuario_id=USUARIO)
-    otra = servicio_a.crear(entrada(numero="A 0002"), usuario_id=USUARIO)
-    notas_de_b = _nota_de_b_mientras_a_valida(consulta_a, servicio_b, factura.id,
-                                              monkeypatch)
-
-    with pytest.raises(FacturaConNotas):
-        servicio_a.editar(factura.id, nota(otra.id, numero="A 0001"),
-                          usuario_id=USUARIO)
-    _sigue_siendo_factura_del_cliente_1(sesion_a, factura.id, notas_de_b)
 
 
 def test_una_nota_cargada_mientras_la_factura_cambia_de_cliente_frena_el_cambio(

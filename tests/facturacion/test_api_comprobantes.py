@@ -536,6 +536,29 @@ def test_de_punta_a_punta_los_schemas_aceptan_lo_que_devuelve_el_servicio(db):
     assert c.get(ruta).status_code == 404
 
 
+def test_un_put_que_cambia_el_tipo_es_422_en_el_campo_tipo(db):
+    """El tipo queda fijo al editar (E3b): una Factura no pasa a Nota de
+    crédito ni al revés, y lo guardado no cambia."""
+    servicio = ComprobantesService(db, ConsultaFalsa())
+    c = _cliente(servicio=servicio)
+    factura = c.post(f"{F}/comprobantes", json=ENTRADA).json()
+    otra = c.post(f"{F}/comprobantes", json={**ENTRADA, "numero": "0001-00000124"}).json()
+    ruta = f"{F}/comprobantes/{factura['id']}"
+
+    r = c.put(ruta, json={**ENTRADA, "tipo": "nota_credito",
+                          "factura_corregida_id": otra["id"]})
+
+    assert r.status_code == 422
+    assert r.json()["detail"] == {
+        "tipo": "comprobante_invalido",
+        "mensaje": ("El tipo de un comprobante no se cambia. Si se cargó mal, "
+                    "borralo y cargalo de nuevo."),
+        "campo": "tipo"}
+    guardado = c.get(ruta).json()
+    assert guardado["tipo"] == "factura"
+    assert guardado["actualizado_en"] is None
+
+
 # ═══ Adjuntos (filas 6 a 8; paso B4) ════════════════════════════════════════
 
 ADJUNTOS = f"{F}/comprobantes/5/adjuntos"
