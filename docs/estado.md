@@ -2,17 +2,19 @@
 
 Sólo lo vivo: lo que está en curso, el próximo paso, lo que espera al usuario y lo que quedó para más adelante.
 Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva abajo). La regla está en
-`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-18**.
+`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-19**.
 
 ## En curso
 
-- Nada en curso.
+- Facturación E3b (Precarga y Período facturado): spec con 6 tickets aprobada el 2026-10-19, en
+  `docs/superpowers/plans/2026-10-19-facturacion-e3b.md` (rama `feature/facturacion-e3b` en los dos
+  repos). Fase 3, Ticket 1 (el Período facturado en el Comprobante, con la `facturacion/007`).
 
 ## Próximo paso
 
-La E3b de Facturación (Precarga y Período facturado, con el mismo calendario del Resumen). Toda
-migración, primero en `testing` y con OK; todo deploy, con OK. Facturación se deploya por avances,
-escondida: nadie tiene su rol (2026-10-13).
+Terminar el Ticket 1 y seguir con el 2. La `facturacion/007` va primero en `testing`, con pre-check,
+respaldo y OK; todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su rol
+(2026-10-13).
 
 ## Pendientes del usuario
 
