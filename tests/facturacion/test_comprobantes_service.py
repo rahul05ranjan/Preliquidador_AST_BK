@@ -396,6 +396,10 @@ def test_precio_cero_se_acepta(servicio):
 
 # ─── Nota de crédito ────────────────────────────────────────────────────────
 
+# El mes de la Línea de `historico()`: una Nota que lo corrige va en ese mes.
+AGOSTO_2025 = {"periodo_desde": "2025-08-01", "periodo_hasta": "2025-08-15"}
+
+
 def nota(factura_id, **campos):
     base = {"tipo": "nota_credito", "numero": "NC 0001",
             "factura_corregida_id": factura_id,
@@ -439,8 +443,8 @@ def test_una_nota_de_credito_valida_corrige_un_historico_y_da_total_negativo(
     factura = historico(db)
 
     # Otra Empresa que la de la Factura (el histórico no tiene): no se valida.
-    nc = servicio.crear(nota(factura.id, empresa_emisora="EMPRESA DOS"),
-                        usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id, empresa_emisora="EMPRESA DOS",
+                             **AGOSTO_2025), usuario_id=USUARIO)
 
     db.expire_all()
     guardada = db.get(Comprobante, nc.id)
@@ -450,6 +454,100 @@ def test_una_nota_de_credito_valida_corrige_un_historico_y_da_total_negativo(
     # El importe de la Línea se guarda positivo; el signo lo da el tipo.
     assert guardada.lineas[0].importe == Decimal("20.00")
     assert total_firmado(guardada.tipo, [l.importe for l in guardada.lineas]) == Decimal("-20.00")
+
+
+# El período de una Nota queda dentro del mes de la Factura que corrige
+# (spec de la E3b, Ticket 5b y §9): una Nota corrige lo facturado en ese mes.
+# El mes de la Factura es el de su Período o, en un histórico, el de su
+# primera Línea, como el `mes` del listado.
+
+def _mes_de_la_nota_es_invalido(error, mes):
+    assert error.value.tipo == "comprobante_invalido"
+    assert error.value.campo == "periodo_desde"
+    assert error.value.mensaje == (
+        f"El período tiene que quedar dentro de {mes}, el mes de la Factura "
+        "que corrige.")
+
+
+def test_una_nota_con_periodo_de_otro_mes_que_su_factura_no_se_da_de_alta(
+        servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.crear(nota(factura.id, periodo_desde="2026-10-01",
+                            periodo_hasta="2026-10-15"), usuario_id=USUARIO)
+    _mes_de_la_nota_es_invalido(error, "septiembre de 2026")
+    assert db.query(Comprobante).count() == 1
+
+
+def test_una_nota_con_otro_periodo_dentro_del_mes_de_su_factura_se_da_de_alta(
+        servicio, db):
+    # La Factura es del 16 al 30; la Nota puede cubrir otra parte del mes.
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+
+    nc = servicio.crear(nota(factura.id, periodo_desde="2026-09-01",
+                             periodo_hasta="2026-09-15"), usuario_id=USUARIO)
+    db.expire_all()
+    guardada = db.get(Comprobante, nc.id)
+    assert (guardada.periodo_desde, guardada.periodo_hasta) == (
+        date(2026, 9, 1), date(2026, 9, 15))
+
+
+def test_editar_una_nota_a_un_periodo_de_otro_mes_que_su_factura_no_se_guarda(
+        servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(nc.id, nota(factura.id, periodo_desde="2026-08-16",
+                                    periodo_hasta="2026-08-31"),
+                        usuario_id=OTRO_USUARIO)
+    _mes_de_la_nota_es_invalido(error, "septiembre de 2026")
+    db.expire_all()
+    sin_tocar = db.get(Comprobante, nc.id)
+    assert sin_tocar.periodo_desde == date(2026, 9, 16)
+    assert sin_tocar.actualizado_en is None
+
+
+def test_editar_una_nota_dentro_del_mes_de_su_factura_se_guarda(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    servicio.editar(nc.id, nota(factura.id, periodo_desde="2026-09-01",
+                                periodo_hasta="2026-09-30"),
+                    usuario_id=OTRO_USUARIO)
+    db.expire_all()
+    assert db.get(Comprobante, nc.id).periodo_hasta == date(2026, 9, 30)
+
+
+def test_contra_un_historico_cuenta_el_mes_de_su_primera_linea(servicio, db):
+    # La primera es la de menor orden, no la de fecha más vieja.
+    factura = historico(db, lineas=[
+        LineaComprobante(orden=2, fecha=date(2025, 7, 20), tarea_id=10,
+                         tarea_nombre="TAREA A", unidad="plantas",
+                         cantidad=Decimal("1.00"), precio_unitario=Decimal("10.0000"),
+                         importe=Decimal("10.00")),
+        LineaComprobante(orden=1, fecha=date(2025, 8, 1), tarea_id=10,
+                         tarea_nombre="TAREA A", unidad="plantas",
+                         cantidad=Decimal("1.00"), precio_unitario=Decimal("10.0000"),
+                         importe=Decimal("10.00")),
+    ])
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.crear(nota(factura.id, periodo_desde="2025-07-16",
+                            periodo_hasta="2025-07-31"), usuario_id=USUARIO)
+    _mes_de_la_nota_es_invalido(error, "agosto de 2025")
+
+    nc = servicio.crear(nota(factura.id, periodo_desde="2025-08-16",
+                             periodo_hasta="2025-08-31"), usuario_id=USUARIO)
+    assert nc.factura_corregida_id == factura.id
+
+
+def test_contra_una_factura_sin_periodo_ni_lineas_el_mes_no_se_controla(servicio, db):
+    factura = historico(db, lineas=[])
+
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+    assert nc.factura_corregida_id == factura.id
 
 
 def test_el_total_de_una_factura_es_positivo(servicio):
@@ -797,8 +895,8 @@ def test_listar_trae_signo_conteos_mes_y_orden(servicio, db, monkeypatch):
     adjunto(db, factura, "dos.pdf")
     # Se ordena por la Fecha de carga: la NC se carga el 20.
     hoy_es(monkeypatch, date(2026, 10, 20))
-    nc = servicio.crear(nota(factura.id, periodo_desde="2026-10-01",
-                             periodo_hasta="2026-10-15"), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id, periodo_desde="2026-09-01",
+                             periodo_hasta="2026-09-15"), usuario_id=USUARIO)
     # Histórico sin fecha de comprobante: se ordena por su primera Línea
     # (2026-10-10), entre la NC y la Factura. Su mes sale de esa Línea.
     sin_fecha = historico(db, fecha=None, clave_identidad="H|1|B 0008", numero="B 0008",
@@ -832,7 +930,8 @@ def test_listar_trae_signo_conteos_mes_y_orden(servicio, db, monkeypatch):
     assert f_nc["tipo"] == "nota_credito"
     assert f_nc["total_neto"] == Decimal("-20.00")
     assert f_nc["cantidad_adjuntos"] == 0
-    assert (f_nc["fecha"], f_nc["mes"]) == (date(2026, 10, 20), "2026-10")
+    assert (f_nc["fecha"], f_nc["mes"]) == (date(2026, 10, 20), "2026-09")
+    assert f_nc["periodo_desde"] == date(2026, 9, 1)
 
     assert f_sin_fecha["fecha"] is None
     assert f_sin_fecha["mes"] == "2026-10"
@@ -952,8 +1051,8 @@ def test_el_detalle_de_una_factura_trae_lineas_notas_y_adjuntos(servicio, db, mo
 
 def test_el_detalle_de_una_nota_trae_su_factura_y_el_importe_positivo(servicio, db):
     factura = historico(db)
-    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
-    servicio.editar(nc.id, nota(factura.id), usuario_id=OTRO_USUARIO)
+    nc = servicio.crear(nota(factura.id, **AGOSTO_2025), usuario_id=USUARIO)
+    servicio.editar(nc.id, nota(factura.id, **AGOSTO_2025), usuario_id=OTRO_USUARIO)
 
     d = servicio.detalle(nc.id)
 
@@ -1273,7 +1372,8 @@ def test_una_nota_con_el_numero_de_un_historico_del_cliente_se_da_de_alta(
     # Los históricos son siempre Facturas: la Nota numera aparte.
     viejo = historico(db)
 
-    nc = servicio.crear(nota(viejo.id, numero="b 0007"), usuario_id=USUARIO)
+    nc = servicio.crear(nota(viejo.id, numero="b 0007", **AGOSTO_2025),
+                        usuario_id=USUARIO)
     db.expire_all()
     assert db.get(Comprobante, nc.id).numero == "B 0007"
     # Una Factura con ese número sigue frenada.

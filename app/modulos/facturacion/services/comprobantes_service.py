@@ -551,6 +551,28 @@ class ComprobantesService:
                 "factura_corregida_id",
                 "La Nota de crédito tiene que corregir una factura del mismo Cliente.")
 
+        # Una Nota corrige lo facturado en ese mes, así que su período queda
+        # dentro del mes de la Factura (spec de la E3b, §9). El período ya se
+        # validó dentro de un mismo mes: alcanza con mirar el Desde.
+        mes = self._mes_de_la_factura(factura)
+        if mes is not None and not fechas.mismo_mes(entrada.periodo_desde, mes):
+            raise ComprobanteInvalido(
+                "periodo_desde",
+                f"El período tiene que quedar dentro de {fechas.texto_mes(mes)}, "
+                "el mes de la Factura que corrige.")
+
+    def _mes_de_la_factura(self, factura: Comprobante) -> date | None:
+        """Un día del mes de la Factura, como el `mes` del listado: el de su
+        período o, si no tiene (un histórico), el de su primera Línea por
+        orden. Sin período ni Líneas, None: no tiene mes."""
+        if factura.periodo_desde is not None:
+            return factura.periodo_desde
+        return self.db.scalar(
+            select(LineaComprobante.fecha)
+            .where(LineaComprobante.comprobante_id == factura.id)
+            .order_by(LineaComprobante.orden, LineaComprobante.id)
+            .limit(1))
+
     def _validar_lineas(self, lineas: list[LineaEntrada], cliente_id: int,
                         periodo_desde: date,
                         tareas_previas: dict[int, str] | None = None,

@@ -559,6 +559,33 @@ def test_un_put_que_cambia_el_tipo_es_422_en_el_campo_tipo(db):
     assert guardado["actualizado_en"] is None
 
 
+def test_una_nota_fuera_del_mes_de_su_factura_es_422_en_periodo_desde(db):
+    """El período de una Nota queda dentro del mes de la Factura que corrige
+    (E3b, Ticket 5b): el 422 llega en `periodo_desde`, con el mes de la
+    Factura, en el alta y en la edición."""
+    servicio = ComprobantesService(db, ConsultaFalsa())
+    c = _cliente(servicio=servicio)
+    factura = c.post(f"{F}/comprobantes", json=ENTRADA).json()
+    nota = {**ENTRADA, "tipo": "nota_credito", "numero": "0001-00000200",
+            "factura_corregida_id": factura["id"]}
+    esperado = {
+        "tipo": "comprobante_invalido",
+        "mensaje": ("El período tiene que quedar dentro de septiembre de 2026, "
+                    "el mes de la Factura que corrige."),
+        "campo": "periodo_desde"}
+    otro_mes = {"periodo_desde": "2026-10-01", "periodo_hasta": "2026-10-15"}
+
+    r = c.post(f"{F}/comprobantes", json={**nota, **otro_mes})
+    assert r.status_code == 422
+    assert r.json()["detail"] == esperado
+
+    r = c.post(f"{F}/comprobantes", json=nota)
+    assert r.status_code == 201, r.text
+    r = c.put(f"{F}/comprobantes/{r.json()['id']}", json={**nota, **otro_mes})
+    assert r.status_code == 422
+    assert r.json()["detail"] == esperado
+
+
 # ═══ Adjuntos (filas 6 a 8; paso B4) ════════════════════════════════════════
 
 ADJUNTOS = f"{F}/comprobantes/5/adjuntos"
