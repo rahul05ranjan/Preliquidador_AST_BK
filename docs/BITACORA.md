@@ -4442,3 +4442,29 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 **Pendiente**
 - Borrar del servidor el respaldo de la 007 cuando ya no haga falta como vuelta atrás (en
   `docs/estado.md`).
+
+## 2026-10-20 — El plan de Facturación al día: etapas 1 a 3 en producción y la etapa 3 aceptada (BK #107)
+
+**Mergeado**
+- PR #107 (backend) — pone al día `docs/modulos/facturacion/plan-facturacion.md` y suma el plan
+  del carril corto, `docs/superpowers/plans/2026-10-20-plan-facturacion-estado.md`. Sólo
+  documentos. Merge `b0439d6`. Sin PR hermano en el front.
+
+**Por frontera**
+- Docs: el encabezado del plan decía "diseño cerrado, sin código"; pasa a decir que las etapas 1,
+  2 y 3 están en producción, escondidas porque nadie tiene el rol de las contadoras, que la etapa 3
+  quedó aceptada y que sigue la etapa 4. La sección 4 deja de estar "a revisar" y anota qué
+  tractor se cuenta en la pulverización.
+
+**Decisiones**
+- La etapa 3 queda aceptada el 2026-10-20: el usuario comparó el Cruce contra el informe de Power
+  BI, que era el criterio de aceptación de la etapa.
+- En la pulverización con dos tractores se cuenta el tractor 1, como en el informe y como ya hace
+  el código; el plan decía que lo confirmaría la etapa 3. Lo confirmó el usuario.
+- Porqué del PR: quien abriera el plan creía que el módulo no existía, y las dos respuestas del
+  usuario no estaban anotadas en ningún lado.
+
+**Estado**
+- Deploy: no hace falta (sólo docs).
+- Migraciones: ninguna.
+- Verificación: lectura del diff; sin tests ni revisión de código, por ser sólo documentos.
