@@ -2,11 +2,13 @@
 
 Sólo lo vivo: lo que está en curso, el próximo paso, lo que espera al usuario y lo que quedó para más adelante.
 Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva abajo). La regla está en
-`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-19**.
+`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-20**.
 
 ## En curso
 
-- Nada en curso.
+- Facturación, Precarga: celdas de las Líneas alineadas y unidades abreviadas en Campo (carril
+  corto, sólo front). Fase 4, revisión. Plan: `docs/superpowers/plans/2026-10-20-precarga-celdas-y-unidades.md`
+  (en la rama `feature/precarga-celdas`).
 
 ## Próximo paso
 
