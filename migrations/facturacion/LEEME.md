@@ -12,6 +12,9 @@ Migraciones del módulo Facturación. Tablas con prefijo `facturacion_`.
   `facturacion_revision_grupo`, y su período (Desde y Hasta); borra `facturacion_revision_tarea` y cambia el índice
   de (Cliente, mes) por uno de (Cliente, mes, Desde, Hasta). Va antes de reiniciar el backend; en producción, la 004
   y la 006 antes del reinicio y la 005 después (2026-10-17).
+- `007_periodo_facturado.sql`: el Comprobante suma su Período facturado (`periodo_desde` y `periodo_hasta`); llena el
+  de los cargados a mano con las quincenas de sus Líneas y pasa la fecha de esas Líneas al Desde. No es idempotente y
+  va antes de reiniciar el backend, con pre-check y respaldo (E3b, 2026-10-19).
 
 Cada archivo nuevo se agrega al final de `migrations/ORDEN.txt` en el mismo PR (un test lo verifica). Las líneas
 comentadas no llevan `;`: el aplicador corta el archivo por `;` y lo que siga quedaría sin `--`. Probar en `testing`; a

@@ -8,9 +8,14 @@ mismo Cliente se frena para no contar dos veces mientras la planilla siga
 viva; y cada error dice qué campo (y qué fila, desde 1) lo causó, que es lo
 que la pantalla necesita para marcarlo.
 
+Desde la E3b, el Comprobante guarda su Período facturado (Desde y Hasta,
+dentro de un mismo mes) y la fecha de cabecera es la Fecha de carga: hoy en el
+alta, sin cambios al editar. Hoy es el 5 de octubre de 2026, salvo donde un
+test mueve el reloj.
+
 Datos inventados.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -20,12 +25,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.core.models import Usuario
+from app.modulos.facturacion import fechas
 from app.modulos.facturacion.models import Adjunto, Comprobante, LineaComprobante
-from app.modulos.facturacion.schemas import ComprobanteEntrada
+from app.modulos.facturacion.schemas import ComprobanteEntrada, LineaEntrada
 from app.modulos.facturacion.services.comprobantes_service import (
     ComprobanteInvalido, ComprobanteModificado, ComprobanteNoEncontrado,
     ComprobanteRepetido, ComprobantesService, FacturaConNotas,
-    HistoricoMismoNumero, HistoricoNoEditable, LineaInvalida,
+    HistoricoMismoNumero, HistoricoNoEditable, LineaInvalida, PeriodoInvalido,
 )
 from app.modulos.facturacion.services.reglas_comprobante import total_firmado
 
@@ -68,6 +75,18 @@ class ConsultaFalsa:
         return list(self.FINCAS.get(cliente_id, []))
 
 
+def hoy_es(monkeypatch, dia: date):
+    """Mueve el reloj del módulo: las 15:00 UTC de ese día son el mismo día
+    en UTC-3."""
+    monkeypatch.setattr(fechas, "_ahora", lambda: datetime(
+        dia.year, dia.month, dia.day, 15, 0, tzinfo=timezone.utc))
+
+
+@pytest.fixture(autouse=True)
+def hoy_5_de_octubre(monkeypatch):
+    hoy_es(monkeypatch, date(2026, 10, 5))
+
+
 @pytest.fixture()
 def db():
     engine = create_engine("sqlite:///:memory:")
@@ -89,14 +108,15 @@ def servicio(db, consulta):
 
 
 def linea(**campos):
-    base = {"fecha": "2026-09-16", "tarea_id": 10, "unidad": "plantas",
+    base = {"tarea_id": 10, "unidad": "plantas",
             "finca_id": None, "cantidad": "1234.50", "precio_unitario": "98.1234"}
     return {**base, **campos}
 
 
 def entrada(**campos):
     base = {"tipo": "factura", "cliente_id": 1, "empresa_emisora": "EMPRESA UNO",
-            "numero": "A 0001", "fecha": "2026-10-05", "factura_corregida_id": None,
+            "numero": "A 0001", "periodo_desde": "2026-09-16",
+            "periodo_hasta": "2026-09-30", "factura_corregida_id": None,
             "lineas": [linea()]}
     return ComprobanteEntrada(**{**base, **campos})
 
@@ -150,7 +170,10 @@ def test_el_alta_guarda_copias_del_maestro_el_importe_calculado_y_la_clave_e(
     assert guardado.cliente_nombre == "CLIENTE UNO"
     assert guardado.empresa_emisora == "EMPRESA UNO"
     assert guardado.numero == "A 0001"
+    # La Fecha de carga es hoy, y el período el que se eligió.
     assert guardado.fecha == date(2026, 10, 5)
+    assert (guardado.periodo_desde, guardado.periodo_hasta) == (
+        date(2026, 9, 16), date(2026, 9, 30))
     assert guardado.clave_identidad == "E|EMPRESA UNO|factura|A 0001"
     assert guardado.es_historico is False
     assert guardado.factura_corregida_id is None
@@ -160,7 +183,8 @@ def test_el_alta_guarda_copias_del_maestro_el_importe_calculado_y_la_clave_e(
 
     primera, segunda = guardado.lineas
     assert (primera.orden, primera.tarea_id, primera.tarea_nombre) == (1, 10, "TAREA A")
-    assert primera.fecha == date(2026, 9, 16)
+    # Cada Línea guarda el Desde del período (decisión 1 de la E3b).
+    assert primera.fecha == segunda.fecha == date(2026, 9, 16)
     assert (primera.finca_id, primera.finca_nombre) == (None, None)
     assert primera.cantidad == Decimal("1234.50")
     assert primera.precio_unitario == Decimal("98.1234")
@@ -262,7 +286,11 @@ def test_el_numero_de_un_historico_de_otro_cliente_no_frena(servicio, db):
     ({"numero": "A|1"}, "numero"),
     # 31 caracteres después de normalizar: no entra en la columna.
     ({"numero": "  " + "1" * 31 + "  "}, "numero"),
-    ({"fecha": None}, "fecha"),
+    ({"periodo_desde": None}, "periodo_desde"),
+    ({"periodo_hasta": None}, "periodo_desde"),
+    ({"periodo_desde": None, "periodo_hasta": None}, "periodo_desde"),
+    # Cruza de mes.
+    ({"periodo_hasta": "2026-10-01"}, "periodo_hasta"),
     ({"lineas": []}, "lineas"),
     # Una Factura no corrige a otra.
     ({"factura_corregida_id": 1}, "factura_corregida_id"),
@@ -273,6 +301,52 @@ def test_cabecera_invalida(servicio, db, campos, campo):
     assert error.value.campo == campo
     assert error.value.mensaje
     assert db.query(Comprobante).count() == 0
+
+
+@pytest.mark.parametrize("campos, campo, mensaje", [
+    ({"periodo_desde": None}, "periodo_desde", "Falta el período facturado."),
+    ({"periodo_hasta": "2026-10-15"}, "periodo_hasta",
+     "El período tiene que quedar dentro de un mismo mes."),
+])
+def test_los_mensajes_del_periodo(servicio, campos, campo, mensaje):
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.crear(entrada(**campos), usuario_id=USUARIO)
+    assert (error.value.campo, error.value.mensaje) == (campo, mensaje)
+    assert error.value.tipo == "comprobante_invalido"
+
+
+@pytest.mark.parametrize("desde, hasta", [
+    ("2026-09-16", "2026-09-15"),
+    # Hasta antes de Desde, aunque además cruce de mes.
+    ("2026-10-05", "2026-09-20"),
+])
+def test_un_periodo_con_hasta_antes_de_desde_es_periodo_invalido(
+        servicio, db, desde, hasta):
+    with pytest.raises(PeriodoInvalido) as error:
+        servicio.crear(entrada(periodo_desde=desde, periodo_hasta=hasta),
+                       usuario_id=USUARIO)
+    assert error.value.tipo == "periodo_invalido"
+    assert error.value.campo == "periodo_hasta"
+    assert error.value.mensaje == "La fecha final no puede ser anterior a la inicial."
+    assert db.query(Comprobante).count() == 0
+
+
+def test_un_periodo_de_un_solo_dia_entra(servicio):
+    c = servicio.crear(entrada(periodo_desde="2026-09-30", periodo_hasta="2026-09-30"),
+                       usuario_id=USUARIO)
+    assert (c.periodo_desde, c.periodo_hasta) == (date(2026, 9, 30), date(2026, 9, 30))
+
+
+def test_la_entrada_no_recibe_fecha_ni_en_la_cabecera_ni_en_las_lineas(servicio, db):
+    assert "fecha" not in ComprobanteEntrada.model_fields
+    assert "fecha" not in LineaEntrada.model_fields
+    # Una fecha que llegue igual se ignora: mandan hoy y el período.
+    c = servicio.crear(entrada(fecha="2020-01-01", lineas=[linea(fecha="2020-01-01")]),
+                       usuario_id=USUARIO)
+    db.expire_all()
+    guardado = db.get(Comprobante, c.id)
+    assert guardado.fecha == date(2026, 10, 5)
+    assert guardado.lineas[0].fecha == date(2026, 9, 16)
 
 
 def test_un_numero_de_30_caracteres_entra(servicio):
@@ -322,6 +396,10 @@ def test_precio_cero_se_acepta(servicio):
 
 # ─── Nota de crédito ────────────────────────────────────────────────────────
 
+# El mes de la Línea de `historico()`: una Nota que lo corrige va en ese mes.
+AGOSTO_2025 = {"periodo_desde": "2025-08-01", "periodo_hasta": "2025-08-15"}
+
+
 def nota(factura_id, **campos):
     base = {"tipo": "nota_credito", "numero": "NC 0001",
             "factura_corregida_id": factura_id,
@@ -365,8 +443,8 @@ def test_una_nota_de_credito_valida_corrige_un_historico_y_da_total_negativo(
     factura = historico(db)
 
     # Otra Empresa que la de la Factura (el histórico no tiene): no se valida.
-    nc = servicio.crear(nota(factura.id, empresa_emisora="EMPRESA DOS"),
-                        usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id, empresa_emisora="EMPRESA DOS",
+                             **AGOSTO_2025), usuario_id=USUARIO)
 
     db.expire_all()
     guardada = db.get(Comprobante, nc.id)
@@ -376,6 +454,100 @@ def test_una_nota_de_credito_valida_corrige_un_historico_y_da_total_negativo(
     # El importe de la Línea se guarda positivo; el signo lo da el tipo.
     assert guardada.lineas[0].importe == Decimal("20.00")
     assert total_firmado(guardada.tipo, [l.importe for l in guardada.lineas]) == Decimal("-20.00")
+
+
+# El período de una Nota queda dentro del mes de la Factura que corrige
+# (spec de la E3b, Ticket 5b y §9): una Nota corrige lo facturado en ese mes.
+# El mes de la Factura es el de su Período o, en un histórico, el de su
+# primera Línea, como el `mes` del listado.
+
+def _mes_de_la_nota_es_invalido(error, mes):
+    assert error.value.tipo == "comprobante_invalido"
+    assert error.value.campo == "periodo_desde"
+    assert error.value.mensaje == (
+        f"El período tiene que quedar dentro de {mes}, el mes de la Factura "
+        "que corrige.")
+
+
+def test_una_nota_con_periodo_de_otro_mes_que_su_factura_no_se_da_de_alta(
+        servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.crear(nota(factura.id, periodo_desde="2026-10-01",
+                            periodo_hasta="2026-10-15"), usuario_id=USUARIO)
+    _mes_de_la_nota_es_invalido(error, "septiembre de 2026")
+    assert db.query(Comprobante).count() == 1
+
+
+def test_una_nota_con_otro_periodo_dentro_del_mes_de_su_factura_se_da_de_alta(
+        servicio, db):
+    # La Factura es del 16 al 30; la Nota puede cubrir otra parte del mes.
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+
+    nc = servicio.crear(nota(factura.id, periodo_desde="2026-09-01",
+                             periodo_hasta="2026-09-15"), usuario_id=USUARIO)
+    db.expire_all()
+    guardada = db.get(Comprobante, nc.id)
+    assert (guardada.periodo_desde, guardada.periodo_hasta) == (
+        date(2026, 9, 1), date(2026, 9, 15))
+
+
+def test_editar_una_nota_a_un_periodo_de_otro_mes_que_su_factura_no_se_guarda(
+        servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(nc.id, nota(factura.id, periodo_desde="2026-08-16",
+                                    periodo_hasta="2026-08-31"),
+                        usuario_id=OTRO_USUARIO)
+    _mes_de_la_nota_es_invalido(error, "septiembre de 2026")
+    db.expire_all()
+    sin_tocar = db.get(Comprobante, nc.id)
+    assert sin_tocar.periodo_desde == date(2026, 9, 16)
+    assert sin_tocar.actualizado_en is None
+
+
+def test_editar_una_nota_dentro_del_mes_de_su_factura_se_guarda(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    servicio.editar(nc.id, nota(factura.id, periodo_desde="2026-09-01",
+                                periodo_hasta="2026-09-30"),
+                    usuario_id=OTRO_USUARIO)
+    db.expire_all()
+    assert db.get(Comprobante, nc.id).periodo_hasta == date(2026, 9, 30)
+
+
+def test_contra_un_historico_cuenta_el_mes_de_su_primera_linea(servicio, db):
+    # La primera es la de menor orden, no la de fecha más vieja.
+    factura = historico(db, lineas=[
+        LineaComprobante(orden=2, fecha=date(2025, 7, 20), tarea_id=10,
+                         tarea_nombre="TAREA A", unidad="plantas",
+                         cantidad=Decimal("1.00"), precio_unitario=Decimal("10.0000"),
+                         importe=Decimal("10.00")),
+        LineaComprobante(orden=1, fecha=date(2025, 8, 1), tarea_id=10,
+                         tarea_nombre="TAREA A", unidad="plantas",
+                         cantidad=Decimal("1.00"), precio_unitario=Decimal("10.0000"),
+                         importe=Decimal("10.00")),
+    ])
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.crear(nota(factura.id, periodo_desde="2025-07-16",
+                            periodo_hasta="2025-07-31"), usuario_id=USUARIO)
+    _mes_de_la_nota_es_invalido(error, "agosto de 2025")
+
+    nc = servicio.crear(nota(factura.id, periodo_desde="2025-08-16",
+                             periodo_hasta="2025-08-31"), usuario_id=USUARIO)
+    assert nc.factura_corregida_id == factura.id
+
+
+def test_contra_una_factura_sin_periodo_ni_lineas_el_mes_no_se_controla(servicio, db):
+    factura = historico(db, lineas=[])
+
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+    assert nc.factura_corregida_id == factura.id
 
 
 def test_el_total_de_una_factura_es_positivo(servicio):
@@ -417,12 +589,15 @@ def adjunto(db, comprobante, nombre="factura.pdf"):
 # ─── Edición ────────────────────────────────────────────────────────────────
 
 def test_el_put_reemplaza_la_cabecera_y_todas_las_lineas_y_sella_quien_edito(
-        servicio, db):
+        servicio, db, monkeypatch):
     c = servicio.crear(entrada(lineas=[linea(), linea(tarea_id=20, unidad="horas_peon")]),
                        usuario_id=USUARIO)
+    # Se edita otro día: la Fecha de carga no cambia.
+    hoy_es(monkeypatch, date(2026, 10, 9))
 
     servicio.editar(c.id, entrada(
-        empresa_emisora=" empresa dos ", numero=" a  0002 ", fecha="2026-10-06",
+        empresa_emisora=" empresa dos ", numero=" a  0002 ",
+        periodo_desde="2026-09-01", periodo_hasta="2026-09-15",
         lineas=[linea(tarea_id=30, unidad="bins", cantidad="2", precio_unitario="10")],
     ), usuario_id=OTRO_USUARIO)
 
@@ -430,7 +605,9 @@ def test_el_put_reemplaza_la_cabecera_y_todas_las_lineas_y_sella_quien_edito(
     guardado = db.get(Comprobante, c.id)
     assert guardado.empresa_emisora == "EMPRESA DOS"
     assert guardado.numero == "A 0002"
-    assert guardado.fecha == date(2026, 10, 6)
+    assert guardado.fecha == date(2026, 10, 5)
+    assert (guardado.periodo_desde, guardado.periodo_hasta) == (
+        date(2026, 9, 1), date(2026, 9, 15))
     # La clave se recalcula con la cabecera nueva.
     assert guardado.clave_identidad == "E|EMPRESA DOS|factura|A 0002"
     assert guardado.creado_por == USUARIO
@@ -441,14 +618,16 @@ def test_el_put_reemplaza_la_cabecera_y_todas_las_lineas_y_sella_quien_edito(
     (unica,) = guardado.lineas
     assert (unica.orden, unica.tarea_nombre, unica.unidad) == (1, "TAREA C", "bins")
     assert unica.importe == Decimal("20.00")
+    # La Línea nueva lleva el Desde del período nuevo.
+    assert unica.fecha == date(2026, 9, 1)
 
 
 def test_editar_sin_cambiar_el_numero_no_es_repetido_de_si_mismo(servicio, db):
     c = servicio.crear(entrada(), usuario_id=USUARIO)
-    servicio.editar(c.id, entrada(numero=" a 0001 ", fecha="2026-10-07"),
+    servicio.editar(c.id, entrada(numero=" a 0001 ", periodo_desde="2026-09-20"),
                     usuario_id=USUARIO)
     db.expire_all()
-    assert db.get(Comprobante, c.id).fecha == date(2026, 10, 7)
+    assert db.get(Comprobante, c.id).periodo_desde == date(2026, 9, 20)
 
 
 def test_editar_al_numero_de_otro_comprobante_es_repetido(servicio, db):
@@ -503,8 +682,10 @@ def test_editar_valida_igual_que_el_alta_y_no_toca_nada(servicio, db):
                         usuario_id=OTRO_USUARIO)
     assert (error.value.fila, error.value.campo) == (2, "unidad")
     with pytest.raises(ComprobanteInvalido) as error:
-        servicio.editar(c.id, entrada(fecha=None), usuario_id=OTRO_USUARIO)
-    assert error.value.campo == "fecha"
+        servicio.editar(c.id, entrada(periodo_desde=None), usuario_id=OTRO_USUARIO)
+    assert error.value.campo == "periodo_desde"
+    with pytest.raises(PeriodoInvalido):
+        servicio.editar(c.id, entrada(periodo_hasta="2026-09-01"), usuario_id=OTRO_USUARIO)
 
     db.expire_all()
     sin_tocar = db.get(Comprobante, c.id)
@@ -539,15 +720,51 @@ def test_una_factura_con_notas_no_cambia_de_cliente(servicio, db, con_tercer_cli
     assert db.get(Comprobante, factura.id).cliente_id == 1
 
 
-def test_una_factura_con_notas_no_cambia_de_tipo(servicio, db):
+# El tipo queda fijo desde la E3b (decisión 3): si se cargó mal, se borra y
+# se carga de nuevo. Vale con o sin Notas de crédito.
+
+def _sin_tocar(db, comprobante_id, tipo):
+    db.expire_all()
+    guardado = db.get(Comprobante, comprobante_id)
+    assert guardado.tipo == tipo
+    assert guardado.actualizado_en is None
+
+
+def test_una_factura_sin_notas_no_pasa_a_nota_de_credito(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    otra = servicio.crear(entrada(numero="A 0002"), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(factura.id, nota(otra.id), usuario_id=OTRO_USUARIO)
+    assert error.value.campo == "tipo"
+    assert error.value.tipo == "comprobante_invalido"
+    assert error.value.mensaje == (
+        "El tipo de un comprobante no se cambia. Si se cargó mal, borralo y "
+        "cargalo de nuevo.")
+    _sin_tocar(db, factura.id, "factura")
+
+
+def test_una_nota_de_credito_no_pasa_a_factura(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(nc.id, entrada(numero="NC 0001"), usuario_id=OTRO_USUARIO)
+    assert error.value.campo == "tipo"
+    _sin_tocar(db, nc.id, "nota_credito")
+
+
+def test_una_factura_con_notas_tampoco_cambia_de_tipo(servicio, db):
+    # Antes era el 409 de la Factura con Notas; ahora el tipo es fijo para
+    # todos, así que sale el 422 del tipo.
     factura = servicio.crear(entrada(), usuario_id=USUARIO)
     otra = servicio.crear(entrada(numero="A 0002"), usuario_id=USUARIO)
     servicio.crear(nota(factura.id), usuario_id=USUARIO)
 
-    with pytest.raises(FacturaConNotas):
+    with pytest.raises(ComprobanteInvalido) as error:
         servicio.editar(factura.id, nota(otra.id, numero="A 0001"), usuario_id=USUARIO)
-    db.expire_all()
-    assert db.get(Comprobante, factura.id).tipo == "factura"
+    assert error.value.campo == "tipo"
+    _sin_tocar(db, factura.id, "factura")
 
 
 def test_una_factura_con_notas_si_cambia_lo_demas(servicio, db):
@@ -561,6 +778,76 @@ def test_una_factura_con_notas_si_cambia_lo_demas(servicio, db):
     guardada = db.get(Comprobante, factura.id)
     assert guardada.numero == "A 0009"
     assert guardada.lineas[0].importe == Decimal("3.00")
+
+
+# Una Factura con Notas de crédito no sale de su mes (E3b, paso R1): es la
+# regla espejo del Ticket 5b. Sus Notas corrigen lo facturado en ese mes, y
+# con la Factura en otro el Cruce mostraría diferencias falsas en los dos.
+
+def _factura_con_notas_no_cambia_de_mes(error, mes):
+    assert error.value.tipo == "comprobante_invalido"
+    assert error.value.campo == "periodo_desde"
+    assert error.value.mensaje == (
+        "Esta Factura tiene Notas de crédito: el período tiene que quedar "
+        f"dentro de {mes}.")
+
+
+def test_una_factura_con_notas_no_cambia_de_mes(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(factura.id, entrada(periodo_desde="2026-10-01",
+                                            periodo_hasta="2026-10-15"),
+                        usuario_id=OTRO_USUARIO)
+    _factura_con_notas_no_cambia_de_mes(error, "septiembre de 2026")
+    db.expire_all()
+    sin_tocar = db.get(Comprobante, factura.id)
+    assert (sin_tocar.periodo_desde, sin_tocar.periodo_hasta) == (
+        date(2026, 9, 16), date(2026, 9, 30))
+    assert sin_tocar.lineas[0].fecha == date(2026, 9, 16)
+    assert sin_tocar.actualizado_en is None
+
+
+def test_una_factura_con_notas_cambia_de_periodo_dentro_de_su_mes(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    servicio.crear(nota(factura.id), usuario_id=USUARIO)
+
+    servicio.editar(factura.id, entrada(periodo_desde="2026-09-01",
+                                        periodo_hasta="2026-09-30"),
+                    usuario_id=OTRO_USUARIO)
+    db.expire_all()
+    guardada = db.get(Comprobante, factura.id)
+    assert (guardada.periodo_desde, guardada.periodo_hasta) == (
+        date(2026, 9, 1), date(2026, 9, 30))
+
+
+def test_una_factura_sin_notas_cambia_de_mes(servicio, db):
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+
+    servicio.editar(factura.id, entrada(periodo_desde="2026-10-01",
+                                        periodo_hasta="2026-10-15"),
+                    usuario_id=OTRO_USUARIO)
+    db.expire_all()
+    guardada = db.get(Comprobante, factura.id)
+    assert guardada.periodo_desde == date(2026, 10, 1)
+    assert guardada.lineas[0].fecha == date(2026, 10, 1)
+
+
+def test_una_factura_con_notas_sin_periodo_cuenta_el_mes_de_su_primera_linea(
+        servicio, db):
+    # Como en el 5b: sin Período, el mes guardado es el de su primera Línea.
+    factura = historico(db, es_historico=False, clave_identidad="E|EMPRESA UNO|factura|A 0001",
+                        empresa_emisora="EMPRESA UNO", numero="A 0001")
+    servicio.crear(nota(factura.id, **AGOSTO_2025), usuario_id=USUARIO)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio.editar(factura.id, entrada(), usuario_id=OTRO_USUARIO)
+    _factura_con_notas_no_cambia_de_mes(error, "agosto de 2025")
+
+    servicio.editar(factura.id, entrada(**AGOSTO_2025), usuario_id=OTRO_USUARIO)
+    db.expire_all()
+    assert db.get(Comprobante, factura.id).periodo_desde == date(2025, 8, 1)
 
 
 def test_una_factura_sin_notas_cambia_de_cliente_y_copia_su_nombre(
@@ -595,12 +882,13 @@ def test_pasar_a_un_cliente_de_baja_al_editar_no_se_permite(servicio, db):
 
 
 def test_una_nota_de_credito_no_se_corrige_a_si_misma(servicio, db):
-    # Una Factura sin notas que pasa a Nota de crédito no puede apuntarse a sí
-    # misma: después del PUT ya no sería una Factura (regla 5).
-    c = servicio.crear(entrada(), usuario_id=USUARIO)
+    # Una Nota que se edita no puede apuntarse a sí misma: no es una Factura
+    # (regla 5).
+    factura = servicio.crear(entrada(), usuario_id=USUARIO)
+    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
 
     with pytest.raises(ComprobanteInvalido) as error:
-        servicio.editar(c.id, nota(c.id), usuario_id=OTRO_USUARIO)
+        servicio.editar(nc.id, nota(nc.id), usuario_id=OTRO_USUARIO)
     assert error.value.campo == "factura_corregida_id"
 
 
@@ -663,21 +951,24 @@ CAMPOS_FILA = {
     "id", "tipo", "numero", "fecha", "mes", "cliente_id", "cliente_nombre",
     "empresa_emisora", "es_historico", "pendiente_de_facturar",
     "cantidad_lineas", "cantidad_adjuntos", "total_neto",
+    "periodo_desde", "periodo_hasta", "creado_por_nombre",
 }
 
 
-def test_listar_trae_signo_conteos_mes_y_orden(servicio, db):
-    # Factura con dos Líneas: el mes es el de la primera (orden 1), no el de
-    # la más vieja.
+def test_listar_trae_signo_conteos_mes_y_orden(servicio, db, monkeypatch):
+    # El mes de uno cargado a mano es el de su período.
     factura = servicio.crear(entrada(lineas=[
-        linea(fecha="2026-09-16", cantidad="2", precio_unitario="10"),
-        linea(fecha="2026-08-01", cantidad="1", precio_unitario="0.5"),
+        linea(cantidad="2", precio_unitario="10"),
+        linea(cantidad="1", precio_unitario="0.5"),
     ]), usuario_id=USUARIO)
     adjunto(db, factura, "uno.pdf")
     adjunto(db, factura, "dos.pdf")
-    nc = servicio.crear(nota(factura.id, fecha="2026-10-20"), usuario_id=USUARIO)
+    # Se ordena por la Fecha de carga: la NC se carga el 20.
+    hoy_es(monkeypatch, date(2026, 10, 20))
+    nc = servicio.crear(nota(factura.id, periodo_desde="2026-09-01",
+                             periodo_hasta="2026-09-15"), usuario_id=USUARIO)
     # Histórico sin fecha de comprobante: se ordena por su primera Línea
-    # (2026-10-10), entre la NC y la Factura.
+    # (2026-10-10), entre la NC y la Factura. Su mes sale de esa Línea.
     sin_fecha = historico(db, fecha=None, clave_identidad="H|1|B 0008", numero="B 0008",
                           lineas=[LineaComprobante(
                               orden=1, fecha=date(2026, 10, 10), tarea_id=10,
@@ -702,21 +993,53 @@ def test_listar_trae_signo_conteos_mes_y_orden(servicio, db):
     assert f_factura["numero"] == "A 0001"
     assert f_factura["empresa_emisora"] == "EMPRESA UNO"
     assert f_factura["fecha"] == date(2026, 10, 5)
+    assert (f_factura["periodo_desde"], f_factura["periodo_hasta"]) == (
+        date(2026, 9, 16), date(2026, 9, 30))
     assert (f_factura["es_historico"], f_factura["pendiente_de_facturar"]) == (False, False)
 
     assert f_nc["tipo"] == "nota_credito"
     assert f_nc["total_neto"] == Decimal("-20.00")
     assert f_nc["cantidad_adjuntos"] == 0
+    assert (f_nc["fecha"], f_nc["mes"]) == (date(2026, 10, 20), "2026-09")
+    assert f_nc["periodo_desde"] == date(2026, 9, 1)
 
     assert f_sin_fecha["fecha"] is None
     assert f_sin_fecha["mes"] == "2026-10"
     assert f_sin_fecha["es_historico"] is True
+    assert (f_sin_fecha["periodo_desde"], f_sin_fecha["periodo_hasta"]) == (None, None)
+    # Lo cargó la migración, no una persona.
+    assert f_sin_fecha["creado_por_nombre"] is None
 
     assert f_sin_numero["numero"] is None
     assert f_sin_numero["pendiente_de_facturar"] is True
     assert f_sin_numero["empresa_emisora"] is None
     assert f_sin_numero["total_neto"] == Decimal("10.00")
     assert f_sin_numero["cliente_nombre"] == "CLIENTE UNO"
+
+
+def test_el_mes_de_uno_a_mano_sale_del_periodo_aunque_su_linea_diga_otro(servicio, db):
+    # Desde la E3b no pasa (la Línea guarda el Desde), pero el período manda.
+    c = servicio.crear(entrada(), usuario_id=USUARIO)
+    c.lineas[0].fecha = date(2026, 8, 1)
+    db.commit()
+    (fila,) = servicio.listar()
+    assert fila["mes"] == "2026-09"
+    assert servicio.detalle(c.id)["mes"] == "2026-09"
+
+
+def test_la_fila_y_el_detalle_traen_quien_lo_cargo(servicio, db):
+    persona = Usuario(nombre="PERSONA DE PRUEBA", email="persona@prueba.test",
+                      password="x", rol="admin")
+    db.add(persona)
+    db.commit()
+    c = servicio.crear(entrada(), usuario_id=persona.id)
+    # Un usuario que ya no existe en la base: sin nombre.
+    sin_persona = servicio.crear(entrada(numero="A 0002"), usuario_id=999)
+
+    nombres = {f["id"]: f["creado_por_nombre"] for f in servicio.listar()}
+    assert nombres == {c.id: "PERSONA DE PRUEBA", sin_persona.id: None}
+    assert servicio.detalle(c.id)["creado_por_nombre"] == "PERSONA DE PRUEBA"
+    assert servicio.detalle(sin_persona.id)["creado_por_nombre"] is None
 
 
 def test_listar_sin_comprobantes(servicio):
@@ -752,16 +1075,17 @@ def test_listar_no_hace_una_consulta_por_comprobante(servicio, db):
 
 # ─── Detalle ────────────────────────────────────────────────────────────────
 
-def test_el_detalle_de_una_factura_trae_lineas_notas_y_adjuntos(servicio, db):
+def test_el_detalle_de_una_factura_trae_lineas_notas_y_adjuntos(servicio, db, monkeypatch):
     factura = servicio.crear(entrada(lineas=[
         linea(finca_id=100, cantidad="2", precio_unitario="10"),
-        linea(fecha="2026-10-01", tarea_id=20, unidad="horas_peon",
-              cantidad="1", precio_unitario="0.5"),
+        linea(tarea_id=20, unidad="horas_peon", cantidad="1", precio_unitario="0.5"),
     ]), usuario_id=USUARIO)
     a = adjunto(db, factura)
-    nc1 = servicio.crear(nota(factura.id, fecha="2026-10-20"), usuario_id=USUARIO)
-    nc2 = servicio.crear(nota(factura.id, numero="NC 0002", fecha="2026-10-21"),
-                         usuario_id=USUARIO)
+    # La fecha de cada Nota es su Fecha de carga.
+    hoy_es(monkeypatch, date(2026, 10, 20))
+    nc1 = servicio.crear(nota(factura.id), usuario_id=USUARIO)
+    hoy_es(monkeypatch, date(2026, 10, 21))
+    nc2 = servicio.crear(nota(factura.id, numero="NC 0002"), usuario_id=USUARIO)
 
     d = servicio.detalle(factura.id)
 
@@ -769,6 +1093,8 @@ def test_el_detalle_de_una_factura_trae_lineas_notas_y_adjuntos(servicio, db):
     assert d["id"] == factura.id
     assert d["total_neto"] == Decimal("20.50")
     assert (d["cantidad_lineas"], d["cantidad_adjuntos"], d["mes"]) == (2, 1, "2026-09")
+    assert (d["fecha"], d["periodo_desde"], d["periodo_hasta"]) == (
+        date(2026, 10, 5), date(2026, 9, 16), date(2026, 9, 30))
     assert d["factura_corregida"] is None
     assert d["notas_credito"] == [
         {"id": nc1.id, "numero": "NC 0001", "fecha": date(2026, 10, 20)},
@@ -795,8 +1121,8 @@ def test_el_detalle_de_una_factura_trae_lineas_notas_y_adjuntos(servicio, db):
 
 def test_el_detalle_de_una_nota_trae_su_factura_y_el_importe_positivo(servicio, db):
     factura = historico(db)
-    nc = servicio.crear(nota(factura.id), usuario_id=USUARIO)
-    servicio.editar(nc.id, nota(factura.id), usuario_id=OTRO_USUARIO)
+    nc = servicio.crear(nota(factura.id, **AGOSTO_2025), usuario_id=USUARIO)
+    servicio.editar(nc.id, nota(factura.id, **AGOSTO_2025), usuario_id=OTRO_USUARIO)
 
     d = servicio.detalle(nc.id)
 
@@ -1116,7 +1442,8 @@ def test_una_nota_con_el_numero_de_un_historico_del_cliente_se_da_de_alta(
     # Los históricos son siempre Facturas: la Nota numera aparte.
     viejo = historico(db)
 
-    nc = servicio.crear(nota(viejo.id, numero="b 0007"), usuario_id=USUARIO)
+    nc = servicio.crear(nota(viejo.id, numero="b 0007", **AGOSTO_2025),
+                        usuario_id=USUARIO)
     db.expire_all()
     assert db.get(Comprobante, nc.id).numero == "B 0007"
     # Una Factura con ese número sigue frenada.
@@ -1125,18 +1452,19 @@ def test_una_nota_con_el_numero_de_un_historico_del_cliente_se_da_de_alta(
     assert error.value.comprobante_id == viejo.id
 
 
-def test_pasar_una_factura_a_nota_con_el_numero_de_otra_nota_es_repetido(
-        servicio, db):
+def test_editar_una_nota_al_numero_de_otra_nota_es_repetido(servicio, db):
+    # El tipo queda fijo desde la E3b: una Factura ya no pasa a Nota, pero una
+    # Nota que se edita sigue numerando con las Notas de su Empresa.
     corregida = servicio.crear(entrada(numero="A 0001"), usuario_id=USUARIO)
     otra_nota = servicio.crear(nota(corregida.id, numero="NC 0001"), usuario_id=USUARIO)
-    c = servicio.crear(entrada(numero="NC 0001"), usuario_id=USUARIO)
+    c = servicio.crear(nota(corregida.id, numero="NC 0002"), usuario_id=USUARIO)
 
     with pytest.raises(ComprobanteRepetido) as error:
         servicio.editar(c.id, nota(corregida.id, numero="NC 0001"),
                         usuario_id=OTRO_USUARIO)
     assert error.value.comprobante_id == otra_nota.id
     db.expire_all()
-    assert db.get(Comprobante, c.id).tipo == "factura"
+    assert db.get(Comprobante, c.id).numero == "NC 0002"
 
 
 # ═══ R4: una Nota cargada mientras su Factura cambia (revisión de BK-A) ═════
@@ -1168,23 +1496,6 @@ def _sigue_siendo_factura_del_cliente_1(sesion, factura_id, notas_de_b):
     assert sesion.get(Comprobante, notas_de_b[0].id).factura_corregida_id == factura_id
 
 
-def test_una_nota_cargada_mientras_la_factura_pasa_a_nota_frena_el_cambio(
-        dos_sesiones, monkeypatch):
-    sesion_a, sesion_b = dos_sesiones
-    consulta_a = ConsultaFalsa()
-    servicio_a = ComprobantesService(sesion_a, consulta_a)
-    servicio_b = ComprobantesService(sesion_b, ConsultaFalsa())
-    factura = servicio_a.crear(entrada(numero="A 0001"), usuario_id=USUARIO)
-    otra = servicio_a.crear(entrada(numero="A 0002"), usuario_id=USUARIO)
-    notas_de_b = _nota_de_b_mientras_a_valida(consulta_a, servicio_b, factura.id,
-                                              monkeypatch)
-
-    with pytest.raises(FacturaConNotas):
-        servicio_a.editar(factura.id, nota(otra.id, numero="A 0001"),
-                          usuario_id=USUARIO)
-    _sigue_siendo_factura_del_cliente_1(sesion_a, factura.id, notas_de_b)
-
-
 def test_una_nota_cargada_mientras_la_factura_cambia_de_cliente_frena_el_cambio(
         dos_sesiones, monkeypatch):
     sesion_a, sesion_b = dos_sesiones
@@ -1200,6 +1511,28 @@ def test_una_nota_cargada_mientras_la_factura_cambia_de_cliente_frena_el_cambio(
         servicio_a.editar(factura.id, entrada(cliente_id=3, numero="A 0001"),
                           usuario_id=USUARIO)
     _sigue_siendo_factura_del_cliente_1(sesion_a, factura.id, notas_de_b)
+
+
+def test_una_nota_cargada_mientras_la_factura_cambia_de_mes_frena_el_cambio(
+        dos_sesiones, monkeypatch):
+    # El mismo orden que con el Cliente (paso R1): la Nota de B, de
+    # septiembre, llega después del primer control de A.
+    sesion_a, sesion_b = dos_sesiones
+    consulta_a = ConsultaFalsa()
+    servicio_a = ComprobantesService(sesion_a, consulta_a)
+    servicio_b = ComprobantesService(sesion_b, ConsultaFalsa())
+    factura = servicio_a.crear(entrada(numero="A 0001"), usuario_id=USUARIO)
+    notas_de_b = _nota_de_b_mientras_a_valida(consulta_a, servicio_b, factura.id,
+                                              monkeypatch)
+
+    with pytest.raises(ComprobanteInvalido) as error:
+        servicio_a.editar(factura.id, entrada(numero="A 0001",
+                                              periodo_desde="2026-10-01",
+                                              periodo_hasta="2026-10-15"),
+                          usuario_id=USUARIO)
+    _factura_con_notas_no_cambia_de_mes(error, "septiembre de 2026")
+    _sigue_siendo_factura_del_cliente_1(sesion_a, factura.id, notas_de_b)
+    assert sesion_a.get(Comprobante, factura.id).periodo_desde == date(2026, 9, 16)
 
 
 def test_la_factura_que_corrige_una_nota_se_lee_con_bloqueo_compartido(servicio, db):

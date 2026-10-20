@@ -18,6 +18,11 @@ _DIA = re.compile(r"\d{4}-\d{2}-\d{2}")
 # El último día de la 1.ª quincena (decisión 8).
 FIN_PRIMERA_QUINCENA = 15
 
+MESES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
 
 def _ahora() -> datetime:
     """El reloj del módulo, en UTC; los tests lo reemplazan."""
@@ -72,6 +77,12 @@ def meses(desde: date, hasta: date) -> list[date]:
 
 def mismo_mes(a: date, b: date) -> bool:
     return (a.year, a.month) == (b.year, b.month)
+
+
+def texto_mes(fecha: date) -> str:
+    """El mes de la fecha como lo lee una persona: "septiembre de 2026", como
+    `textoMes` del front."""
+    return f"{MESES[fecha.month - 1]} de {fecha.year}"
 
 
 def periodo_de_linea(fecha: date) -> tuple[date, date]:

@@ -11,7 +11,9 @@ vuelve a crear `GET /tareas`, ahora en `comprobantes`. Las filas 13 a 17 son
 las de la tabla 3.2 del plan de la E3
 (`docs/superpowers/plans/2026-10-14-facturacion-e3.md`): el Resumen y el
 Detalle piden Ver en `resumen`; dejar y deshacer una Revisión, Editar; la
-configuración, ser admin. El mapa real se lee
+configuración, ser admin. La fila 18 es la Precarga de la E3b
+(`docs/superpowers/plans/2026-10-19-facturacion-e3b.md`), de `comprobantes`
+con Editar: no nace ninguna pantalla. El mapa real se lee
 de `app.routes`: cada dependencia de `requiere_pantalla` expone `.requisito`.
 Una ruta nueva sin su fila, una fila sin ruta o un permiso distinto del de la
 tabla hacen fallar el test.
@@ -39,7 +41,7 @@ EDITAR_RESUMEN = _exige("editar", "resumen")
 ADMIN = "admin"
 
 # Los números son los de la tabla 3.2 del plan de la E2 (1 a 12) y de la E3
-# (13 a 17).
+# (13 a 18).
 ESPERADO = {
     # 1 y 2
     ("GET", f"{F}/comprobantes"): VER_COMPROBANTES,
@@ -66,6 +68,8 @@ ESPERADO = {
     ("DELETE", f"{F}/resumen/{{cliente_id}}/{{mes}}/revision"): EDITAR_RESUMEN,
     # 17: el Umbral y el Mes de corte, sólo el Admin (decisión 4).
     ("PUT", f"{F}/configuracion"): ADMIN,
+    # 18: la Precarga de una Factura nueva (E3b), de quien edita Comprobantes.
+    ("GET", f"{F}/precarga"): EDITAR_COMPROBANTES,
 }
 
 
@@ -101,8 +105,8 @@ def _mapa_real():
     return mapa
 
 
-def test_la_tabla_tiene_las_17_rutas():
-    assert len(ESPERADO) == 17
+def test_la_tabla_tiene_las_18_rutas():
+    assert len(ESPERADO) == 18
 
 
 def test_cada_endpoint_exige_la_pantalla_y_el_nivel_de_la_tabla():

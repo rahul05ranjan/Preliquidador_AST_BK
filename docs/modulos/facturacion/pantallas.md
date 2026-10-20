@@ -95,36 +95,74 @@ mismos números que el informe de Power BI que hoy hace ese control.
     quién, cuándo y el comentario, con "Deshacer". Deshacer no la borra: queda en el registro,
     con quién la deshizo, y vale la más reciente sin deshacer de ese período.
   - No se factura desde acá: si falta facturar algo, se vuelve al Resumen.
-- **Precarga** (cargar una factura o una nota de crédito):
-  - Se abre desde el Resumen (con el mes y el Cliente de la fila) o con "Nueva factura" y
-    "Nueva nota de crédito" en Comprobantes.
-  - Datos de la factura: Tipo, Cliente, Empresa emisora (la de la última Factura al Cliente),
-    Número (punto de venta y número), la Fecha de carga (hoy, sin editar) y el Período
-    facturado.
-  - El Período facturado se elige en el mismo calendario de rango del Resumen, con sus atajos
-    al costado, y dice en qué mes cuenta la factura. Si cruza de un mes a otro, queda en rojo
-    y no se puede guardar. Si cambia, un aviso ofrece "Recalcular líneas" o "Dejar como
-    están", y hasta elegir no se puede guardar.
-  - Líneas: una por tarea trabajada en el período, con #, Tarea, Unidad (la Unidad sugerida),
-    Campo (la Cantidad del campo, en amarillo si la cantidad no coincide), Cantidad, Precio
-    unitario (el Precio sugerido; al pasar el mouse dice de qué factura sale), Importe y
-    quitar. Sin Precio sugerido, el casillero queda vacío y marcado en rojo. Se pueden agregar
-    líneas hasta 15, y todo se puede cambiar. Fila de Total neto.
+- **Precarga** (cargar o editar una factura o una nota de crédito):
+  - Es parte de Comprobantes, no una pantalla aparte: la usa quien tiene Editar en
+    Comprobantes. Un Comprobante nuevo se carga en `/facturacion/comprobantes/nuevo`, y uno ya
+    cargado se edita en `/facturacion/comprobantes/:id/editar`.
+  - Se abre desde una fila del Resumen ("Cargar factura", con el Cliente de la fila), con
+    "Nueva factura" y "Nueva nota de crédito" en Comprobantes, o con "Editar" en la vista del
+    Comprobante. El Resumen siempre arma una Factura: la Nota de crédito se carga sólo desde
+    Comprobantes.
+  - Abre con el Período propuesto: desde el Resumen, el período que se miraba, recortado al mes
+    de la fila; con "Nueva factura", el mes anterior a hoy, entero (para una factura quincenal
+    se toca un atajo); en una Nota de crédito, el de la Factura que corrige.
+  - Datos de la factura: el Tipo (lo da desde dónde se abre y no se cambia, tampoco al
+    editar), Cliente, en una Nota de crédito la Factura que corrige, Empresa emisora (la de la
+    última Factura al Cliente), Número (punto de venta y número), la Fecha de carga (hoy, sin
+    editar; al editar, "Fecha de carga · persona", que no cambia) y el Período facturado.
+  - El Período facturado se elige en el mismo calendario de rango del Resumen, con cuatro
+    atajos al costado (Quincena pasada, Esta quincena, Mes pasado y Este mes), y dice en qué mes
+    cuenta la factura. Si cruza de un mes a otro, queda en rojo con "El período tiene que quedar
+    dentro de un mismo mes" y no se puede guardar.
+  - Si cambia el período o el Cliente con Líneas cargadas, un aviso ofrece "Recalcular líneas"
+    o "Dejar como están", y hasta elegir no se puede guardar. Recalcular arma las Líneas como
+    una Precarga nueva de ese período. Dejar no toca Cantidad, Precio ni Importe: sólo Campo
+    pasa al período nuevo, y si hay tareas trabajadas en el período sin Línea, un aviso dice
+    "N tareas trabajadas en el período no están en la factura", con "Agregarlas", que no pasa
+    de 15 líneas.
+  - Líneas: una por tarea trabajada en el período, con #, Tarea, Unidad (la Unidad propuesta),
+    Campo (la Cantidad del campo en la unidad de la línea, con la marca "no coincide" si no
+    coincide con la Cantidad; vacía en las unidades de cosecha), Cantidad, Precio unitario (el
+    Precio sugerido; al pasar el mouse dice de qué factura sale, "Último precio: FC … del …"),
+    Importe y quitar. Sin Precio sugerido, el casillero queda vacío y marcado en rojo. Se
+    pueden agregar líneas hasta 15, con el contador "N de 15", y todo se puede cambiar. Con más
+    de 15 tareas trabajadas, trae 15 y avisa cuántas quedaron afuera. Fila de Total neto.
+  - Cambiar la Unidad de una línea pasa su Cantidad a lo trabajado en esa unidad y vuelve a
+    sugerir el Precio; lo que se cambió a mano no se pisa, y sólo cambia Campo.
   - Panel derecho: el PDF (arrastrar o elegir), el control del neto del PDF contra lo que suman
-    las líneas (opcional), y "Falta para guardar" con lo que falta. Al pie, Cancelar y Guardar.
+    las líneas (opcional), y "Falta para guardar" con lo que falta. En el alta, el PDF es
+    obligatorio. Al pie, Cancelar y Guardar. Al guardar, el alta, la subida del PDF (hasta
+    10 MB), un aviso y la vista del Comprobante; si la subida falla, la vista dice "Se guardó,
+    pero no el PDF: adjuntalo acá".
+  - Al editar: abre con las Líneas guardadas, sin recalcular, y Campo muestra lo trabajado en
+    el período guardado, como referencia. Las Líneas guardadas cuentan como cambiadas a mano:
+    cambiarles la Unidad sólo cambia Campo. Cada Línea conserva su finca. No se cambia el
+    Cliente de una Factura que tiene Notas de crédito. El panel muestra los Adjuntos, como en
+    la vista, y el PDF no se pide; abajo, "Borrar comprobante". Un Comprobante histórico no se
+    edita: no muestra "Editar", y su dirección de edición avisa que no se edita.
+  - En una Nota de crédito: primero se elige el Cliente y después la Factura que corrige, de
+    un desplegable con las Facturas de ese Cliente. El período se copia de esa Factura (de una
+    histórica, la Quincena de su primera Línea, aunque haya cubierto el mes entero: hay que
+    revisarlo) y sólo se cambia dentro de su mes; fuera de él queda en rojo y no se guarda. Las
+    líneas arrancan vacías, con "Agregar línea" y el Precio sugerido. Una Nota de crédito no
+    tiene Campo ni Recalcular, tampoco al editarla.
   - "Importar orden del portal" abre una ventana encima con los renglones de la Orden de
     facturación traducidos con las Equivalencias. Un renglón sin Equivalencia pide la tarea, con
     "Guardar para la próxima"; hasta completarlos no se puede usar la orden. Al usarla, las
     líneas se reemplazan por las de la orden y la columna Campo sigue mostrando lo trabajado.
 - **Comprobante** (uno ya cargado, por ejemplo sin Adjunto):
-  - Datos de la factura y sus líneas en sólo lectura, con el Período facturado y la Fecha de
-    carga.
+  - Datos de la factura y sus líneas en sólo lectura, con el Período facturado (por ejemplo,
+    "1 al 15 de octubre") y "Fecha de carga · persona". Un Comprobante histórico no tiene
+    Período: cada línea muestra su fecha.
+  - Arriba, "Ver lo trabajado", sólo con Ver en Resumen: lleva al Detalle del Cliente en el mes
+    del Período facturado, mirando ese período; en un histórico, al mes de su primera Línea,
+    entero. Y "Editar", sólo con Editar en Comprobantes y si no es histórico: abre la Precarga.
   - Panel lateral para adjuntar el PDF y ver los totales. Al adjuntarlo, el mes deja de tener
     Falta comprobante.
 - **Comprobantes**: listado con la barra de filtros común (período y seleccionables de Cliente,
-  Empresa emisora, Tipo, PDF y Origen, más la búsqueda por número), columnas Fecha, Número,
-  Cliente, Empresa emisora, Origen, Neto y PDF ("Sin PDF" a la vista), y la fila TOTAL con la
-  cantidad de facturas y de notas de crédito. Arriba, "Nueva factura" y "Nueva nota de
+  Empresa emisora, Tipo, PDF y Origen, más la búsqueda por número), columnas Fecha de carga,
+  Número, Cliente, Empresa emisora, Origen, Neto y PDF ("Sin PDF" a la vista), y la fila TOTAL
+  con la cantidad de facturas y de notas de crédito. Arriba, "Nueva factura" y "Nueva nota de
   crédito", que abren la Precarga. La Nota de crédito se muestra con importe negativo; un
   Comprobante histórico, con su marca y en sólo lectura.
 - **Equivalencias**: tabla con Cliente, Texto del cliente, Tarea nuestra, Unidad y Último uso,

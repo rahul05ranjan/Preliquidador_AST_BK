@@ -150,15 +150,18 @@ _numeros = iter(range(1, 10_000))
 
 
 def comprobante(db, cliente_id, lineas, *, tipo="factura", es_historico=False,
-                pendiente_de_facturar=False, adjuntos=0, cliente_nombre=None):
+                pendiente_de_facturar=False, adjuntos=0, cliente_nombre=None,
+                periodo=(None, None)):
     """Un Comprobante con sus Líneas, cada una (tarea_id, unidad, fecha,
-    cantidad, importe), y `adjuntos` Adjuntos."""
+    cantidad, importe), y `adjuntos` Adjuntos. `periodo` es su Período
+    facturado (Desde, Hasta); sin él, cuenta la quincena de cada Línea."""
     n = next(_numeros)
     c = Comprobante(
         tipo=tipo, cliente_id=cliente_id,
         cliente_nombre=cliente_nombre or f"COPIA {cliente_id}",
         empresa_emisora=None if es_historico else "EMPRESA UNO",
         numero=f"A {n:04d}", fecha=date(2026, 11, 2), es_historico=es_historico,
+        periodo_desde=periodo[0], periodo_hasta=periodo[1],
         pendiente_de_facturar=pendiente_de_facturar,
         clave_identidad=f"P|{n}",
         lineas=[
@@ -581,6 +584,38 @@ def test_con_la_quincena_entera_la_misma_factura_se_compara(db, servicio, consul
     fila = por_cliente(servicio.resumen("2026-10-01", "2026-10-15"), OCTUBRE)[UNO]
 
     # La Línea del 16 cae entera afuera: no cuenta y no avisa.
+    assert fila["grupos"] == [linea("MANUALES", "horas_peon", "100", "100")]
+    assert (fila["estados"], fila["comprobantes_fuera"]) == (["facturada"], [])
+
+
+def test_una_factura_del_mes_entero_no_cuenta_con_la_quincena_y_avisa(
+        db, servicio, consulta):
+    # Guardián de la E3b (decisión 1): cargada a mano del 1 al 31, su Línea
+    # lleva la fecha del Desde. Antes contaba como de la 1.ª quincena.
+    consulta.trabajo(UNO, PODA, OCTUBRE, jornal="100")
+    factura = comprobante(db, UNO, [(PODA, "horas_peon", OCTUBRE, "100", "5000")],
+                          adjuntos=1, periodo=(OCTUBRE, date(2026, 10, 31)))
+
+    quincena = por_cliente(servicio.resumen("2026-10-01", "2026-10-15"), OCTUBRE)[UNO]
+    assert quincena["grupos"] == [fuera_del_filtro("MANUALES", "horas_peon", "100", "0")]
+    assert quincena["estados"] == ["sin_comparar"]
+    assert quincena["comprobantes_fuera"] == [
+        {"id": factura.id, "tipo": "factura", "numero": factura.numero,
+         "desde": OCTUBRE, "hasta": date(2026, 10, 31)}]
+
+    entero = por_cliente(servicio.resumen("2026-10-01", "2026-10-31"), OCTUBRE)[UNO]
+    assert entero["grupos"] == [linea("MANUALES", "horas_peon", "100", "100")]
+    assert (entero["estados"], entero["comprobantes_fuera"]) == (["facturada"], [])
+
+
+def test_un_historico_sin_periodo_sigue_contando_por_la_quincena(db, servicio, consulta):
+    # Guardián de la E3b: el histórico cuenta igual que antes.
+    consulta.trabajo(UNO, PODA, OCTUBRE, jornal="100")
+    comprobante(db, UNO, [(PODA, "horas_peon", OCTUBRE, "100", "5000")],
+                es_historico=True)
+
+    fila = por_cliente(servicio.resumen("2026-10-01", "2026-10-15"), OCTUBRE)[UNO]
+
     assert fila["grupos"] == [linea("MANUALES", "horas_peon", "100", "100")]
     assert (fila["estados"], fila["comprobantes_fuera"]) == (["facturada"], [])
 

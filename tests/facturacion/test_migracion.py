@@ -1,8 +1,9 @@
 """Las migraciones de Facturación: la 001 creó facturacion_tarea, la 002 la borra,
 la 003 crea las tablas de Comprobantes (E2), la 004 las de la configuración y la
 Revisión de diferencia (E3), la 005 borra los permisos guardados de las
-pantallas retiradas `pendientes` y `cruce` y la 006 pasa la Revisión a grupos
-y le suma su período (spec de la E3a por grupo).
+pantallas retiradas `pendientes` y `cruce`, la 006 pasa la Revisión a grupos
+y le suma su período (spec de la E3a por grupo) y la 007 le suma al
+Comprobante su Período facturado (spec de la E3b).
 
 Se leen los `.sql` como texto, sin base, como en tests/core/test_migracion_roles.py.
 Desde el 2026-10-12 la Unidad sugerida se lee del sistema de campo
@@ -28,6 +29,7 @@ M003 = CARPETA / "003_comprobantes.sql"
 M004 = CARPETA / "004_resumen.sql"
 M005 = CARPETA / "005_borrar_pendientes_y_cruce.sql"
 M006 = CARPETA / "006_revision_por_grupo.sql"
+M007 = CARPETA / "007_periodo_facturado.sql"
 ORDEN = RAIZ / "migrations" / "ORDEN.txt"
 
 
@@ -61,8 +63,8 @@ def _sentencias(sql: str) -> list[str]:
 #    `;` en una línea comentada quedaría sin `--` y se ejecutaría.
 
 @pytest.mark.parametrize(
-    "ruta", [M001, M002, M003, M004, M005, M006],
-    ids=["001", "002", "003", "004", "005", "006"],
+    "ruta", [M001, M002, M003, M004, M005, M006, M007],
+    ids=["001", "002", "003", "004", "005", "006", "007"],
 )
 def test_ninguna_linea_comentada_tiene_punto_y_coma(ruta):
     malas = [
@@ -203,15 +205,14 @@ def test_la_006_no_es_diferible_y_va_antes_del_reinicio():
     assert "ANTES de reiniciar el backend" in sql
 
 
-# 13. En ORDEN.txt, la 006 después de la 005 (el orden de una base nueva) y
-#     al final del archivo.
+# 13. En ORDEN.txt, la 006 después de la 005 (el orden de una base nueva). La
+#     E3b suma la 007 después.
 
-def test_la_006_va_despues_de_la_005_y_al_final():
+def test_la_006_va_despues_de_la_005():
     entradas = _entradas_de_orden()
     m005 = "facturacion/005_borrar_pendientes_y_cruce.sql"
     m006 = "facturacion/006_revision_por_grupo.sql"
     assert entradas.index(m005) < entradas.index(m006)
-    assert entradas[-1] == m006
 
 
 # 14. La tabla nueva tiene las columnas del modelo, el motor y la collation de
@@ -263,3 +264,67 @@ def test_el_indice_de_la_revision_es_el_del_periodo():
     assert indices == {
         "ix_facturacion_revision_cliente_mes_periodo": ["cliente_id", "mes", "desde", "hasta"],
     }
+
+
+# 17. La 007 va con el deploy, ANTES de reiniciar el backend: el código de esta
+#     versión lee el período del Comprobante. Su ALTER no es idempotente, y el
+#     encabezado lo dice.
+
+def test_la_007_no_es_diferible_va_antes_del_reinicio_y_avisa_que_no_es_idempotente():
+    sql = _sql(M007)
+    assert "-- NO DIFERIBLE" in sql
+    assert "ANTES de reiniciar el backend" in sql
+    assert "-- No es idempotente" in sql
+
+
+# 18. En ORDEN.txt, la 007 después de la 006 y al final del archivo.
+
+def test_la_007_va_despues_de_la_006_y_al_final():
+    entradas = _entradas_de_orden()
+    m006 = "facturacion/006_revision_por_grupo.sql"
+    m007 = "facturacion/007_periodo_facturado.sql"
+    assert entradas.index(m006) < entradas.index(m007)
+    assert entradas[-1] == m007
+
+
+# 19. La 007 suma las dos columnas, llena el período de los cargados a mano por
+#     las quincenas de sus Líneas (las tres combinaciones) y, después, pasa la
+#     fecha de esas Líneas al Desde. Nada más.
+
+def test_lo_que_hace_la_007():
+    sentencias = _sentencias(_sql(M007))
+    assert len(sentencias) == 3
+    sumar, periodo, lineas = sentencias
+    assert sumar == ("ALTER TABLE facturacion_comprobante "
+                     "ADD COLUMN periodo_desde DATE NULL AFTER fecha, "
+                     "ADD COLUMN periodo_hasta DATE NULL AFTER periodo_desde")
+    assert periodo.startswith("UPDATE facturacion_comprobante")
+    # Sólo los cargados a mano que todavía no tienen período.
+    assert periodo.endswith("WHERE c.es_historico = 0 AND c.periodo_desde IS NULL")
+    # Las quincenas que tocan las Líneas, en un mismo mes (si no, no se llena).
+    assert "MIN(DAY(fecha)) <= 15 AS hay_primera" in periodo
+    assert "MAX(DAY(fecha)) >= 16 AS hay_segunda" in periodo
+    assert "HAVING LAST_DAY(MIN(fecha)) = LAST_DAY(MAX(fecha))" in periodo
+    # Sólo la 1.ª: del 1 al 15. Sólo la 2.ª: del 16 a fin de mes. Las dos: el
+    # mes entero.
+    assert ("c.periodo_desde = CASE WHEN l.hay_primera THEN l.mes "
+            "ELSE l.mes + INTERVAL 15 DAY END") in periodo
+    assert ("c.periodo_hasta = CASE WHEN l.hay_segunda THEN LAST_DAY(l.mes) "
+            "ELSE l.mes + INTERVAL 14 DAY END") in periodo
+    assert lineas == (
+        "UPDATE facturacion_linea l "
+        "JOIN facturacion_comprobante c ON c.id = l.comprobante_id "
+        "SET l.fecha = c.periodo_desde "
+        "WHERE c.es_historico = 0 AND c.periodo_desde IS NOT NULL "
+        "AND l.fecha <> c.periodo_desde")
+
+
+# 20. Las columnas nuevas son las del modelo: fecha, sin obligatoriedad (un
+#     histórico no tiene período).
+
+def test_el_modelo_tiene_el_periodo_de_la_007():
+    columnas = Base.metadata.tables["facturacion_comprobante"].columns
+    for nombre in ("periodo_desde", "periodo_hasta"):
+        assert nombre in columnas
+        assert columnas[nombre].nullable
+        assert columnas[nombre].type.python_type.__name__ == "date"
