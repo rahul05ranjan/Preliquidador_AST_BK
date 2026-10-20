@@ -4299,3 +4299,89 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 
 **Pendiente**
 - Fuera del repo, y por eso no entraron al PR: el agente `ejecutor` y la skill global `revision-codigo` se actualizaron en la máquina del usuario para el mismo flujo; quien trabaje desde otra máquina no los tiene. Vuelta atrás: revertir el merge (vuelve el flujo con `planificador`).
+
+## 2026-10-19 — Facturación: Precarga de la Factura y Período facturado del Comprobante (E3b, BK #105)
+
+**Mergeado**
+- PR #105 (backend) — el Comprobante guarda su Período facturado y nace la ruta de la Precarga.
+  Merge `5271eec`.
+- PR #85 (frontend, hermano) — la pantalla de la Precarga, con el Período facturado y el PDF al
+  costado; el alta y la edición pasan a la Precarga. Merge `99b86fc`. Su cuerpo remite al del BK
+  #105 para las decisiones del dominio.
+
+**Por frontera**
+- Facturación: el alta y la edición del Comprobante reciben `periodo_desde` y `periodo_hasta` en
+  lugar de `fecha`; la Fecha de carga es hoy en el alta y no cambia al editar; la fila y el detalle
+  suman el período y `creado_por_nombre`. Nuevos 422: período faltante, que cruza de mes o con
+  Hasta antes de Desde; cambio de tipo; Nota de crédito fuera del mes de su Factura; Factura con
+  Notas que cambia de mes. `services/cruce.py` cuenta cada Línea con el período de su Comprobante
+  (un histórico, sin período, sigue contando por la quincena de la fecha de la Línea). Nace
+  `services/precarga_service.py` con la ruta 18, `GET /api/facturacion/precarga` (Cliente, Desde y
+  Hasta; `comprobantes`, nivel Editar): una Línea propuesta por tarea trabajada con su unidad
+  propuesta y todas sus medidas, los precios por (tarea, unidad) con su comprobante de origen y la
+  Empresa sugerida. En el front, `pages/Precarga.jsx` con `precarga.js` (Factura nueva desde el
+  Resumen o Comprobantes, Recalcular o Dejar al cambiar período o Cliente, cambio de unidad, edición
+  y Nota de crédito con "Ver lo trabajado"), `components/PanelPdf.jsx` y `listaFlotante.js`;
+  `pages/Comprobante.jsx` queda sólo para ver.
+- Prod y Datos: `migrations/facturacion/007_periodo_facturado.sql` suma `periodo_desde` y
+  `periodo_hasta` (`DATE NULL`); los cargados a mano reciben el período de las quincenas de sus
+  Líneas y la `fecha` de esas Líneas pasa a `periodo_desde`; los históricos quedan sin período.
+- Docs: `CONTEXT-facturacion.md` suma Período facturado, Fecha de carga, Precarga y unidad
+  propuesta; `pantallas.md`; el plan de la E3 con las marcas de lo que reemplaza la spec; la spec
+  `docs/superpowers/plans/2026-10-19-facturacion-e3b.md`.
+
+**Decisiones**
+- El período lo decide quien carga, no la fecha de la Línea. Porqué: una factura del mes entero no
+  entra en una quincena; sale el aviso que ya existía, con "Ver el mes entero". **Reemplaza la
+  decisión 8 de la E3a** (el período salía de la quincena de la fecha de cada Línea). En los
+  cargados desde la E3b, la `fecha` de la Línea es `periodo_desde`, como dato interno, así la
+  consulta por mes y su índice no cambian. Descartado: dos columnas de período en cada Línea.
+- La Precarga arma la Factura con lo que el campo ya sabe (qué tareas, cuánto, en qué unidad y a
+  qué precio se facturó la última vez). La unidad propuesta es la de la última Factura a ese
+  Cliente por esa tarea, sin contar las Notas; si no hay, la Unidad sugerida. Descartado: una tabla
+  de unidad por Cliente en Mantenimiento.
+- La ruta devuelve todas las medidas de cada tarea y los precios por (tarea, unidad). Porqué:
+  algunos Clientes, por arreglos internos, facturan una tarea en otra unidad; cambiar la unidad trae
+  medida y precio sin otra consulta y el cruce queda bien.
+- El tipo de un Comprobante queda fijo al editar: si se cargó mal, se borra y se carga de nuevo.
+  Revierte lo de la E2, que lo dejaba cambiar si no había Notas. Porqué no registrado en el PR.
+- La edición no recalcula. Porqué: lo guardado salió del PDF y no se recalcula sin que la contadora
+  lo pida (decidido por el usuario el 2026-10-19).
+- El período de una Nota de crédito queda en el mes de su Factura, porque la Nota corrige lo
+  facturado en ese mes. La regla espejo, una Factura con Notas no sale de su mes, salió en la
+  revisión. Porqué: sus Notas quedarían corrigiendo un mes que ya no factura. Descartado: mover las
+  Notas con la Factura (el usuario eligió frenarlo).
+- La 007 llena el período de los cargados a mano con las quincenas de sus Líneas (la 1.ª, la 2.ª o
+  el mes entero); si uno tiene Líneas en dos meses, el pre-check frena y se consulta al usuario.
+  Descartado: dejarlos sin período.
+- En pantalla: el mismo calendario del Resumen con 4 atajos (un rango que cruza de mes queda en rojo
+  y no se guarda); "Dejar como están" no toca las Líneas, sólo pasa Campo al período nuevo con la
+  marca de lo que no coincide y ofrece "Agregarlas"; una sola Precarga para el alta y la edición,
+  con las Líneas guardadas como tocadas a mano. Porqué no registrado en el PR.
+- El panel del PDF queda al costado también a 1366 px: la grilla se desplaza a lo ancho en su caja
+  y la lista de tareas flota. Porqué: en la revisión, el panel caía debajo de la grilla, fuera de la
+  vista.
+
+**Estado**
+- Deploy: no. Facturación sigue escondida (nadie tiene su rol).
+- Migraciones: la `facturacion/007`, aplicada en `testing` el 2026-10-19 (pre-check sin las
+  columnas, 0 cargados a mano, respaldo vacío). En producción va con OK, no diferible, antes de
+  reiniciar el backend; el ALTER no es idempotente, los dos UPDATE sí.
+- Verificación: `pytest` 2193 passed y 1 xfailed (`ESPERADO` de `test_mapa_permisos.py` pasa de 17 a
+  18 rutas); front, 522 tests y build OK. Smoke en el navegador contra `testing` con los dos PRs
+  (Precarga nueva desde el Resumen, cambio de unidad, Recalcular y Dejar, edición, Nota de crédito,
+  el 422 de una Factura con Notas que cambia de mes, el panel a 1366 px); los Comprobantes de
+  prueba se borraron. Revisión de dos rondas (`revision-codigo`, `impeccable critique` y `audit`,
+  dos rondas porque toca `migrations/` y `models.py`): 0 urgent, 2 high arreglados (R1, la Factura
+  con Notas que cambiaba de mes; R2, el panel a 1366 px), 22 minor sin tocar, 13 y 4 descartados.
+
+**Pendiente**
+- El deploy, con OK: la `facturacion/007` en producción con su pre-check y el respaldo de los
+  cargados a mano, y los dos PRs en la misma ventana, backend primero (el front anterior manda
+  `fecha` y su alta da 422 con el backend nuevo).
+- Vuelta atrás: revertir los dos PRs juntos; con el backend parado, devolver la `fecha` de las
+  Líneas de los cargados a mano desde el respaldo y borrar las dos columnas según la vuelta atrás
+  comentada de la 007; recién después, el código anterior.
+- Los 22 minor y la deuda previa vista en la revisión, en los cuerpos del BK #105 y el FT #85 y en
+  "A futuro" de `docs/estado.md`.
+- Para más adelante: "Copiar las líneas de la Factura" en la Nota de crédito.

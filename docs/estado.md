@@ -6,20 +6,16 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Facturación E3b (Precarga y Período facturado): spec con 6 tickets aprobada el 2026-10-19, en
-  `docs/superpowers/plans/2026-10-19-facturacion-e3b.md` (rama `feature/facturacion-e3b` en los dos
-  repos). Fase 5: PRs hermanos abiertos el 2026-10-19, BK #105 y FT #85, con el backend primero.
-  Revisión: 0 urgent, 2 high arreglados (R1 y R2), 22 minor sin tocar. La `facturacion/007` está
-  aplicada en `testing` (2026-10-19).
+- Nada en curso.
 
 ## Próximo paso
 
-Mergear el BK #105 y después el FT #85, con OK, y correr `/bitacora`. La `facturacion/007` en producción, con OK; todo deploy, con
-OK. Facturación se deploya por avances, escondida: nadie tiene su rol
+Todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene su rol
 (2026-10-13).
 
 ## Pendientes del usuario
 
+- Facturación E3b: aplicar la `facturacion/007` en producción y deployar BK #105 y FT #85 juntos, backend primero, con OK (2026-10-19).
 - Facturación: borrar del servidor el respaldo de `rol_permiso` de la `facturacion/005` cuando ya no haga falta como vuelta atrás (deploy del 2026-10-17).
 - Terceros, etapa 11 de Pitu (BK #101 y FT #82): revisados el 2026-10-15, con la revisión dejada como comentario en los dos PRs (3 urgent y 10 high). No se mergean hasta que Pitu los arregle. El FT #82, además, espera la decisión del usuario sobre la dependencia `html2pdf.js`. Antes del deploy, confirmar en producción lo que da por hecho la migración `terceros/010`.
 - Cargar `TALLER_SHEET_URL` en el `.env` del servidor y reiniciar el backend: hasta entonces las alertas de Terceros responden 502 a propósito (deploy del 2026-09-30).
