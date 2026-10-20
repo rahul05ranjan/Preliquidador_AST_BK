@@ -4419,3 +4419,26 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 **Pendiente**
 - Los 7 minor y la deuda previa vista en la revisión, en el cuerpo del FT #86 y en "A futuro" de
   `docs/estado.md`.
+
+## 2026-10-20 — Deploy de la Facturación E3b: Precarga y Período facturado (BK #105 y #106, FT #85 y #86)
+
+**Estado**
+- Deploy: sí, a producción, con OK del usuario. Backend de `6b9f953` a `6b5b95b` (`main` con los
+  merges del BK #104, #105 y #106); frontend de `15a4550` a `ed7ad91` (merges del FT #85 y #86),
+  build desde `main` con el bundle igual en local y en el servidor. Backend primero, porque el
+  front anterior manda `fecha` y su alta da 422 con el backend nuevo. Sin dependencias ni
+  variables de entorno nuevas. Facturación sigue escondida: nadie tiene su rol.
+- Migraciones: la `facturacion/007`, con el backend parado. Pre-check sin las columnas, 0
+  Comprobantes cargados a mano (los 353 históricos quedan sin período) y ninguno con Líneas en
+  dos meses; respaldo previo de los cargados a mano y sus Líneas (vacío). Los dos UPDATE no
+  tocaron filas.
+- Smoke sin escribir: `/health` ok; las rutas de la Precarga, de Comprobantes y de la sesión
+  responden 401 sin sesión; el sitio sirve el bundle nuevo; el arranque verificó las tablas y el
+  log queda sin errores. No probado: las pantallas con un usuario logueado (nadie tiene el rol).
+- Vuelta atrás: con el backend parado, devolver la `fecha` de las Líneas desde el respaldo y
+  borrar las dos columnas según la vuelta atrás comentada de la 007; después, el código anterior
+  y la carpeta anterior del front, los dos juntos.
+
+**Pendiente**
+- Borrar del servidor el respaldo de la 007 cuando ya no haga falta como vuelta atrás (en
+  `docs/estado.md`).
