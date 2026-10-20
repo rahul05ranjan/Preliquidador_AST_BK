@@ -4385,3 +4385,37 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 - Los 22 minor y la deuda previa vista en la revisión, en los cuerpos del BK #105 y el FT #85 y en
   "A futuro" de `docs/estado.md`.
 - Para más adelante: "Copiar las líneas de la Factura" en la Nota de crédito.
+
+## 2026-10-20 — Facturación: celdas de la Precarga alineadas y unidades abreviadas en Campo (FT #86)
+
+**Mergeado**
+- PR #86 (frontend) — la grilla de Líneas de la Precarga alinea sus celdas con un Precio sugerido
+  o una Cantidad a mano, y Campo muestra la unidad abreviada. Merge `ed7ad91`.
+- PR #106 (backend, hermano) — sólo el plan del carril corto,
+  `docs/superpowers/plans/2026-10-20-precarga-celdas-y-unidades.md`. Merge `485143e`.
+
+**Por frontera**
+- Facturación (front): en la grilla editable las celdas van arriba y el número de fila, Campo e
+  Importe bajan a la altura del texto de los campos; la etiqueta "sugerido" o "a mano" y la marca
+  "no coincide" agrandan la fila hacia abajo sin mover nada. La grilla de sólo lectura sigue
+  centrada. Campo muestra HsH, HsM, Pl, Ha y Tanc, con el nombre completo en el `title`
+  (`UNIDAD_DE_CAMPO` en `precarga.js`; `campoDeLinea` suma `nombre`).
+- Docs: el plan.
+
+**Decisiones**
+- Las abreviaturas de Campo las eligió el usuario. Descartado: unificarlas con las de Revisión y
+  Controles, fuera de este pedido.
+- La alineación nueva se limita a la grilla editable. Porqué: la de sólo lectura comparte la
+  clase de fila y, sin el límite, un Comprobante guardado quedaba con el número unos 2 px más abajo
+  y una tarea de varios renglones subía el resto de las celdas (high de la revisión, paso R1).
+
+**Estado**
+- Deploy: no. Va con el próximo deploy de Facturación, que sigue escondida.
+- Migraciones: ninguna.
+- Verificación: `npm test` 522/522, build OK, lint de los archivos tocados OK; en el navegador
+  contra `testing` a 1366 px, la fila alineada a ±1 px y la de sólo lectura centrada. Revisión: 0
+  urgent, 1 high arreglado, 7 minor sin tocar y 3 descartados.
+
+**Pendiente**
+- Los 7 minor y la deuda previa vista en la revisión, en el cuerpo del FT #86 y en "A futuro" de
+  `docs/estado.md`.

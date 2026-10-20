@@ -6,9 +6,7 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 ## En curso
 
-- Facturación, Precarga: celdas de las Líneas alineadas y unidades abreviadas en Campo (carril
-  corto, sólo front). Fase 4, revisión. Plan: `docs/superpowers/plans/2026-10-20-precarga-celdas-y-unidades.md`
-  (en la rama `feature/precarga-celdas`).
+- Nada en curso.
 
 ## Próximo paso
 
@@ -41,6 +39,13 @@ Todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene
 
 ## A futuro
 
+- Limpieza y prolijidad de código de las celdas y las unidades abreviadas de la Precarga, los 7
+  minors de la revisión sin tocar: `UNIDAD_DE_CAMPO` y `ETIQUETAS` son dos tablas con las mismas
+  claves; la clave `nombre` de `campoDeLinea` se confunde con la de la tarea; los `padding-top` de
+  11 y 13 px dependen del alto de `.campo` sin mostrar la cuenta; un corte raro en el JSDoc de
+  `campoDeLinea`; los tests no cubren Ha ni Tanc; `.campoUnidad` repite el subrayado del `abbr`;
+  el `title` del `abbr` tapa el del td y no llega por teclado. Deuda previa: `.quitar:hover` con
+  rgba sin token. El detalle va en el cuerpo del FT #86 (2026-10-20).
 - Limpieza y prolijidad de código de la Facturación E3b (Precarga y Período facturado), los 22 minors
   de la revisión sin tocar:
   - código repetido: dos `PeriodoInvalido` y los mensajes de `leer_periodo`, `unidades_propuestas`
