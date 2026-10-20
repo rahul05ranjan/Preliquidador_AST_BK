@@ -75,7 +75,9 @@ _Avoid_: confundirla con el Período facturado, que es lo que decide en qué mes
 Los días de trabajo que cobra o corrige el Comprobante: un desde y un hasta, siempre dentro de
 un mismo mes, que es el mes en que cuenta lo facturado. Se propone solo (el Período propuesto)
 y quien carga lo puede cambiar a una quincena, a otro mes o a los días que quiera de un mismo
-mes. El de una Nota de crédito sólo cambia dentro del mes de la Factura que corrige.
+mes. El de una Nota de crédito sólo cambia dentro del mes de la Factura que corrige, y el de una
+Factura con Notas de crédito, sólo dentro de su propio mes: si cambiara de mes, sus Notas
+quedarían corrigiendo un mes que ya no factura.
 _Avoid_: un período que cruce de un mes a otro.
 
 **Línea de comprobante**:
