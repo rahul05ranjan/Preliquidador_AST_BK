@@ -363,3 +363,73 @@ Criterios de aceptación:
 - [ ] El glosario nombra la unidad propuesta y el Período propuesto según desde dónde se abre.
 - [ ] El plan de la E3 remite a esta spec en las §3.6 y §3.7.
 PR: el del backend de la E3b
+
+## Arreglos de la revisión (fase 4, 2026-10-19)
+
+Revisión de la primera ronda: 0 urgent, 2 high, 15 minor (van al PR) y 13 descartados. Los dos high
+los decidió el usuario el 2026-10-19.
+
+### Paso R1 — Una Factura con Notas de crédito no cambia de mes
+Hallazgo (high): `editar` del servicio de Comprobantes y la Precarga en edición dejan pasar el Período
+de una Factura que ya tiene Notas de crédito a otro mes.
+Escenario de falla: la Factura y su Nota son de septiembre; se edita la Factura y su período pasa a
+octubre. Septiembre queda con neto negativo y el Cruce muestra diferencias falsas en los dos meses.
+Decisión del usuario: frenarlo. Es la regla espejo del Ticket 5b: la Nota no sale del mes de su
+Factura, y la Factura con Notas tampoco sale del suyo.
+Arreglo:
+- Back: al editar una Factura con Notas de crédito, si el mes del Período nuevo es distinto del mes
+  guardado (el de su Período o, si no tiene, el de su primera Línea, como en el 5b), 422
+  `comprobante_invalido` en `periodo_desde`, con un mensaje que nombre el mes: "Esta Factura tiene
+  Notas de crédito: el período tiene que quedar dentro de septiembre de 2026." Sin Notas, o dentro del
+  mismo mes, se guarda como hasta ahora.
+- Front: en la Precarga en edición de una Factura con Notas, el mismo control al elegir el período:
+  el error en rojo junto al período (como en la Nota) y en "Falta para guardar", sin guardar. El
+  calendario no se limita: el control es al elegir, como en la Nota.
+Criterios de aceptación:
+- [ ] Back: editar una Factura con Notas y período de otro mes da 422 en `periodo_desde`; dentro del
+      mismo mes se guarda; sin Notas se puede cambiar de mes.
+- [ ] Front: el error se ve junto al período y en "Falta para guardar", y Guardar queda frenado.
+Repos: los dos. PR: los de la E3b.
+
+### Paso R2 — El panel de la Precarga queda al costado a 1366 px
+Hallazgo (high): `Precarga.module.css` pide 860 px para la grilla y 280 px para el panel; a 1366 px
+con la barra lateral abierta no entran y el panel (PDF, control del neto y "Falta para guardar") cae
+debajo de la grilla, fuera de la vista al cargar.
+Decisión del usuario (boceto elegido el 2026-10-19): el panel queda siempre a la derecha, con su ancho;
+la grilla toma el ancho que sobra (`minmax(0, 1fr) 280px`) y, si no entra, se desplaza de costado
+dentro de su propia caja, sin desplazar la página.
+Choque visto al planear el arreglo: una caja con `overflow-x: auto` también recorta en vertical, y la
+lista del selector de tareas de la grilla (`position: absolute`, hasta 288 px) cuelga debajo de la fila;
+con una o dos Líneas, el caso común de una Nota, la lista queda cortada dentro de la caja.
+Decisión del usuario (2026-10-19, opción "Lista flotante"): la lista del selector de tareas se abre
+por encima de todo, con `position: fixed` y las coordenadas del campo, para que ninguna caja la corte.
+Arreglo:
+- La Precarga: la grilla de la página en `minmax(0, 1fr) 280px`, sin el `@container` que hoy pasa el
+  panel abajo; la grilla de Líneas va dentro de una caja con `overflow-x: auto`.
+- El selector de tareas: la lista con `position: fixed`, ubicada con `getBoundingClientRect` del campo
+  (abajo, o arriba si abajo no entra); al desplazar la pantalla o cambiar su tamaño con la lista
+  abierta, se reubica o se cierra. El teclado y el mouse siguen como hoy.
+- El comentario de `GrillaLineas.module.css` que pide no tener overflow propio se actualiza.
+- La carga de un Comprobante, que usa la misma grilla de Líneas, sigue andando igual.
+- Si la ubicación de la lista se calcula en una función, va con su par de test rojo y verde; lo
+  visual, sin test, verificado en el navegador a 1366 px con la barra lateral abierta y en una
+  pantalla ancha. Antes de editar, `impeccable context` y `reference/craft-floor.md`; al terminar,
+  `impeccable detect --json` sobre los archivos tocados.
+Criterios de aceptación:
+- [ ] A 1366 px el panel se ve a la derecha de la grilla, sin desplazamiento horizontal de la página.
+- [ ] La grilla se desplaza de costado dentro de su caja cuando no entra; la cabecera y la barra de
+      botones no se desplazan con ella.
+- [ ] La lista de tareas de la última fila se ve entera, en la Precarga y en la carga de un
+      Comprobante, con una sola Línea y con la grilla desplazada de costado.
+- [ ] Con la lista abierta, desplazar la pantalla no la deja flotando lejos de su campo.
+Repos: front. PR: el del front de la E3b.
+
+### Paso R3 — El glosario suma la regla del mes de la Factura con Notas
+El glosario de Facturación (`docs/modulos/facturacion/CONTEXT-facturacion.md`), en el Período
+facturado, dice que el de una Nota de crédito sólo cambia dentro del mes de su Factura; suma, al
+lado, que el de una Factura con Notas sólo cambia dentro de su propio mes (Paso R1). Decisión del
+usuario del 2026-10-19: va en este PR. Paso de docs, sin test; lo escribió la sesión principal.
+Criterios de aceptación:
+- [x] El glosario dice que el Período de una Factura con Notas de crédito no cambia de mes, junto a
+      la regla de la Nota.
+Repos: back. PR: el del backend de la E3b.
