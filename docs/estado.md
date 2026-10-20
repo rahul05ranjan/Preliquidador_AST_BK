@@ -39,6 +39,12 @@ Todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene
 
 ## A futuro
 
+- Limpieza y prolijidad de código de los íconos y "Cargar factura" en el Detalle, los 4 minors sin
+  tocar: el foco de `.enlaceBoton` repite el bloque de foco de `Detalle.module.css`; `.revisar` ya
+  no nombra lo que hace; en la Precarga el menú no marca dónde está y el enlace de vuelta lleva a
+  Comprobantes aunque se llegue desde el Detalle; el recibo se parece al ícono de Preliquidación.
+  Sin probar en el navegador: los dos botones juntos (en `testing` no hay un caso) y el Resumen
+  refrescado después de guardar en la Precarga. El detalle va en el cuerpo del FT #87 (2026-10-20).
 - Limpieza y prolijidad de código de las celdas y las unidades abreviadas de la Precarga, los 7
   minors de la revisión sin tocar: `UNIDAD_DE_CAMPO` y `ETIQUETAS` son dos tablas con las mismas
   claves; la clave `nombre` de `campoDeLinea` se confunde con la de la tarea; los `padding-top` de

@@ -4468,3 +4468,43 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 - Deploy: no hace falta (sólo docs).
 - Migraciones: ninguna.
 - Verificación: lectura del diff; sin tests ni revisión de código, por ser sólo documentos.
+
+## 2026-10-20 — Facturación: íconos propios y "Cargar factura" desde el Detalle (BK #108, FT #87)
+
+**Mergeado**
+- PR #87 (frontend) — íconos de Resumen y Comprobantes, botón "Cargar factura" en el Detalle y la
+  Precarga que refresca el Resumen. Merge `a463fd7`.
+- PR #108 (backend) — el plan del carril corto,
+  `docs/superpowers/plans/2026-10-20-iconos-y-acceso-precarga.md`. Sólo documentos. Merge `36d459b`.
+
+**Por frontera**
+- Núcleo (front): dos íconos nuevos en `src/core/ui/iconos.jsx`, recibo y planilla de control, en
+  el mismo PR que los usa.
+- Facturación: en el menú, Resumen pasa a la planilla de control y Comprobantes al recibo (antes
+  usaba el de Conceptos). El Detalle de un Cliente con Pendiente de facturar muestra "Cargar
+  factura", que abre la Precarga con el Cliente y el período del Detalle, sólo con Editar en
+  `comprobantes`. Al guardar o borrar en la Precarga se invalidan también el Resumen y sus Detalles.
+- Docs: el plan, con sus desvíos al ejecutar.
+
+**Decisiones**
+- Recibo y planilla de control. Porqué: el ícono de Conceptos en Comprobantes no decía nada; el
+  usuario los eligió sobre un mockup.
+- El botón reusa `destinoDeEtiqueta`, la decisión de la fila, con `rutaDeCargarDesdeElDetalle`.
+  Porqué: el permiso y el armado de la ruta quedan en un solo lugar. Descartado: exportar
+  `rutaDeCargarFactura` y repetir el control de permiso en el Detalle.
+- Es un `Link` con aspecto de botón. Porqué: navega y se puede abrir en otra pestaña.
+- Si convive con "Marcar revisada", "Cargar factura" es la primaria y va al final. Porqué:
+  decisión del usuario tras la crítica.
+- La Precarga invalida el Resumen. Porqué: sin eso, al volver, el Detalle seguía en Pendiente de
+  facturar hasta recargar; lo vio la crítica y el usuario pidió arreglarlo en este PR.
+
+**Estado**
+- Deploy: no.
+- Migraciones: ninguna.
+- Verificación: `npm test` 524 pasan; lint sin errores (5 warnings ya conocidos de Terceros);
+  build ok. Revisión: 0 urgent, 0 high, 3 minor sin tocar, 4 descartados. `/impeccable critique`
+  28/36 y `audit` 17/20. Smoke contra `testing` a 1366 px. No probado en el navegador: los dos
+  botones juntos y el Resumen refrescado después de guardar.
+
+**Pendiente**
+- Los minors y lo no probado, en "A futuro" de `docs/estado.md`.
