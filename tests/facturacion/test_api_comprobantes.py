@@ -586,6 +586,33 @@ def test_una_nota_fuera_del_mes_de_su_factura_es_422_en_periodo_desde(db):
     assert r.json()["detail"] == esperado
 
 
+def test_una_factura_con_notas_que_cambia_de_mes_es_422_en_periodo_desde(db):
+    """La regla espejo del 5b (E3b, paso R1): una Factura con Notas de
+    crédito no sale de su mes. El 422 llega en `periodo_desde`, con el mes
+    guardado; dentro del mismo mes se guarda."""
+    servicio = ComprobantesService(db, ConsultaFalsa())
+    c = _cliente(servicio=servicio)
+    factura = c.post(f"{F}/comprobantes", json=ENTRADA).json()
+    r = c.post(f"{F}/comprobantes", json={
+        **ENTRADA, "tipo": "nota_credito", "numero": "0001-00000200",
+        "factura_corregida_id": factura["id"]})
+    assert r.status_code == 201, r.text
+    ruta = f"{F}/comprobantes/{factura['id']}"
+
+    r = c.put(ruta, json={**ENTRADA, "periodo_desde": "2026-10-01",
+                          "periodo_hasta": "2026-10-15"})
+    assert r.status_code == 422
+    assert r.json()["detail"] == {
+        "tipo": "comprobante_invalido",
+        "mensaje": ("Esta Factura tiene Notas de crédito: el período tiene que "
+                    "quedar dentro de septiembre de 2026."),
+        "campo": "periodo_desde"}
+
+    r = c.put(ruta, json={**ENTRADA, "periodo_desde": "2026-09-01"})
+    assert r.status_code == 200, r.text
+    assert r.json()["periodo_desde"] == "2026-09-01"
+
+
 # ═══ Adjuntos (filas 6 a 8; paso B4) ════════════════════════════════════════
 
 ADJUNTOS = f"{F}/comprobantes/5/adjuntos"

@@ -197,6 +197,16 @@ class ComprobantesService:
             raise FacturaConNotas()
 
         cabecera = self._validar_cabecera(entrada, actual=comprobante)
+        # Una Factura con Notas de crédito tampoco sale de su mes (paso R1 de
+        # la E3b): es la regla espejo de la Nota, que no sale del mes de su
+        # Factura. El período ya se validó dentro de un mismo mes: alcanza con
+        # mirar el Desde.
+        mes_guardado = (self._mes_de_la_factura(comprobante)
+                        if comprobante.tipo == FACTURA else None)
+        cambia_mes = (mes_guardado is not None
+                      and not fechas.mismo_mes(cabecera["periodo_desde"], mes_guardado))
+        if cambia_mes and self._tiene_notas(comprobante.id):
+            raise self._factura_con_notas_cambia_de_mes(mes_guardado)
         # Las fincas que ya tenía se conservan sólo si el Cliente no cambia:
         # con otro Cliente, una finca del anterior no es suya.
         fincas_previas = (
@@ -247,9 +257,12 @@ class ComprobantesService:
         # ya sellada, el control de Notas se repite con lectura bloqueante: en
         # MySQL ve lo último confirmado, y una Nota que llega después espera a
         # este guardado (ver _validar_factura_corregida).
-        if cambia_cliente and self._tiene_notas(comprobante.id, bloquear=True):
+        if ((cambia_cliente or cambia_mes)
+                and self._tiene_notas(comprobante.id, bloquear=True)):
             self.db.rollback()
-            raise FacturaConNotas()
+            if cambia_cliente:
+                raise FacturaConNotas()
+            raise self._factura_con_notas_cambia_de_mes(mes_guardado)
 
         # Sin autoflush: reemplazar la colección carga las Líneas viejas, y esa
         # consulta escribiría la cabecera nueva antes de tiempo. Un choque con
@@ -319,6 +332,15 @@ class ComprobantesService:
         if comprobante.es_historico:
             raise HistoricoNoEditable()
         return comprobante
+
+    @staticmethod
+    def _factura_con_notas_cambia_de_mes(mes: date) -> ComprobanteInvalido:
+        """El 422 de una Factura con Notas cuyo período sale de su mes, con el
+        mes guardado para que el front lo muestre en el campo."""
+        return ComprobanteInvalido(
+            "periodo_desde",
+            "Esta Factura tiene Notas de crédito: el período tiene que quedar "
+            f"dentro de {fechas.texto_mes(mes)}.")
 
     def _tiene_notas(self, comprobante_id: int, bloquear: bool = False) -> bool:
         """Si alguna Nota de crédito corrige este Comprobante. Con `bloquear`,
