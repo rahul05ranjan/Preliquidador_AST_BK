@@ -1,9 +1,10 @@
 # Plan del módulo Facturación
 
-**Estado**: diseño cerrado, sin código. Las dos dependencias ya están entregadas (ver
-"Dependencias"). La spec de implementación se hace **por etapa**, con sus tickets, en
-`docs/superpowers/plans/`: una de las cinco etapas con archivos y tests concretos quedaría
-vieja antes de llegar a la mitad (2026-10-11).
+**Estado**: las etapas 1, 2 y 3 están en producción, escondidas: nadie tiene el rol de las
+contadoras todavía. La etapa 3 quedó aceptada el 2026-10-20, con la comparación del Cruce contra
+el informe de Power BI que hizo el usuario. Sigue la etapa 4. La spec de implementación se hace
+**por etapa**, con sus tickets, en `docs/superpowers/plans/`: una de las cinco etapas con
+archivos y tests concretos quedaría vieja antes de llegar a la mitad (2026-10-11).
 **Fecha de la decisión**: 2026-10-08, entrevista sobre la planilla de facturación a clientes y
 el informe de Power BI que la cruza contra el sistema de campo. **Rediseño del flujo**:
 2026-10-14, con un mockup aprobado por el usuario: las pantallas Pendientes y Cruce pasan a
@@ -287,10 +288,11 @@ ellas. Reemplazan a las tres capacidades del diseño original (consultar, cargar
 
 ## 4. Lo que el informe anterior hace y conviene no copiar
 
-A revisar cuando se valide el Cruce contra el informe (etapa 3):
+Revisado al validar el Cruce contra el informe (etapa 3):
 
 - **Pulverización con dos tractores**: el informe compara sólo las horas del primer tractor.
-  Decidido el 2026-10-12: se cuenta un solo tractor; cuál, lo confirma la etapa 3.
+  Decidido el 2026-10-12: se cuenta un solo tractor. El usuario confirmó el 2026-10-20 que es
+  el tractor 1, como en el informe. Este punto sí se copia.
 - **Tarea sin unidad**: el informe la deja en cero en silencio. El módulo avisa en el Resumen
   (etapa 3).
 
