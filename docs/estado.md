@@ -8,15 +8,13 @@ Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva ab
 
 - Facturación E3b (Precarga y Período facturado): spec con 6 tickets aprobada el 2026-10-19, en
   `docs/superpowers/plans/2026-10-19-facturacion-e3b.md` (rama `feature/facturacion-e3b` en los dos
-  repos, todo commiteado salvo los arreglos). Fase 4 terminada: la revisión dio 0 urgent, 2 high
-  arreglados, 15 minor y 13 descartados. Los dos high van como pasos R1 (una Factura con Notas de
-  crédito no cambia de mes) y R2 (el panel de la Precarga queda al costado a 1366 px), más R3 (el
-  glosario); la segunda ronda sobre los arreglos dio 0 urgent, 0 high y 7 minor, y el smoke de los
-  dos pasó. La `facturacion/007` está aplicada en `testing` (2026-10-19).
+  repos). Fase 5: PRs hermanos abiertos el 2026-10-19, BK #105 y FT #85, con el backend primero.
+  Revisión: 0 urgent, 2 high arreglados (R1 y R2), 22 minor sin tocar. La `facturacion/007` está
+  aplicada en `testing` (2026-10-19).
 
 ## Próximo paso
 
-Commitear R1, R2 y R3 en los dos repos, con OK; después, la fase 5 (PRs hermanos), con OK. La `facturacion/007` en producción, con OK; todo deploy, con
+Mergear el BK #105 y después el FT #85, con OK, y correr `/bitacora`. La `facturacion/007` en producción, con OK; todo deploy, con
 OK. Facturación se deploya por avances, escondida: nadie tiene su rol
 (2026-10-13).
 
@@ -45,6 +43,22 @@ OK. Facturación se deploya por avances, escondida: nadie tiene su rol
 
 ## A futuro
 
+- Limpieza y prolijidad de código de la Facturación E3b (Precarga y Período facturado), los 22 minors
+  de la revisión sin tocar:
+  - código repetido: dos `PeriodoInvalido` y los mensajes de `leer_periodo`, `unidades_propuestas`
+    copia `precios_sugeridos`, dos `textoMes`, `mesEntero`, `errorDePeriodoConNotas` y el bloque de
+    `editar`, y el 288 en dos lugares;
+  - `Precarga.jsx` larga y ramificada, y nombres confusos o que tapan a otros;
+  - comentarios que citan el plan;
+  - de `impeccable`: el origen del Precio sugerido sólo en el `title`, texto de 11 px apagado, el
+    aviso "sin finca" sólo en un toast, la confirmación sin mover el foco, el borde de 3 px de
+    `.aviso`, opacidades en los botones apagados, el orden de la cabecera, "h máquina" y "ha" sin
+    explicar;
+  - al arrastrar la barra horizontal de las Líneas, la lista de tareas se cierra.
+
+  Deuda previa vista ahí: los errores de Guardar y Borrar sin toast (regla 21), `maxLength={40}`
+  contra `LARGO_NUMERO = 30` y los nombres largos con "No facturable" en 5 o 6 renglones. El
+  detalle va en los cuerpos de los PRs hermanos, BK #105 y FT #85 (2026-10-19).
 - Limpieza y prolijidad de código del control por período y el calendario, los minors de la revisión
   sin tocar: un `box-shadow` con rgba sin token en el calendario; el par imposible "Antes del corte y
   Falta comprobante" en `estados.js` y su test; comentarios que citan el plan; `en_curso` guarda una
