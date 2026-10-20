@@ -4508,3 +4508,16 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
 
 **Pendiente**
 - Los minors y lo no probado, en "A futuro" de `docs/estado.md`.
+
+## 2026-10-20 — Deploy de los íconos y "Cargar factura" desde el Detalle (FT #87)
+
+**Estado**
+- Deploy: sí, a producción, con OK del usuario. Sólo el frontend, de `ed7ad91` a `a463fd7`
+  (merge del FT #87), build desde `main` con el bundle igual en local y en el servidor. Backend
+  sin tocar: desde el deploy anterior sólo entraron documentos (BK #107, #108 y la bitácora). Sin
+  dependencias ni variables de entorno nuevas. Facturación sigue escondida: nadie tiene su rol.
+- Migraciones: ninguna.
+- Smoke sin escribir: el sitio sirve el bundle nuevo y la ruta de la Precarga responde; la sesión
+  responde 401 sin login; `/health` ok y el log sin errores. No probado: las pantallas con un
+  usuario logueado (nadie tiene el rol).
+- Vuelta atrás: volver a la carpeta anterior del front, que quedó guardada en el servidor.
