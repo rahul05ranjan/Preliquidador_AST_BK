@@ -49,7 +49,13 @@ class Comprobante(Base):
     empresa_emisora       = Column(String(100), nullable=True)
     # Normalizado. Vacío sólo en un histórico sin número.
     numero                = Column(String(30), nullable=True)
+    # La Fecha de carga: hoy en el alta a mano, y no cambia al editar.
     fecha                 = Column(Date, nullable=True)
+    # El Período facturado (007), Desde y Hasta incluidos, dentro de un mismo
+    # mes. Lo elige quien carga, y el cruce cuenta cada Línea con él. NULL en
+    # un histórico: se cuenta por la quincena de la fecha de cada Línea.
+    periodo_desde         = Column(Date, nullable=True)
+    periodo_hasta         = Column(Date, nullable=True)
     # Obligatoria en una Nota de crédito cargada a mano. La FK no tiene ON
     # DELETE: la base no deja borrar una Factura que tiene Notas de crédito.
     factura_corregida_id  = Column(Integer, ForeignKey("facturacion_comprobante.id"), nullable=True)
@@ -104,7 +110,9 @@ class LineaComprobante(Base):
         Integer, ForeignKey("facturacion_comprobante.id", ondelete="CASCADE"), nullable=False,
     )
     orden           = Column(SmallInteger, nullable=False)
-    # La fecha a facturar (el 1 o el 16), no la del Comprobante.
+    # En un histórico, la fecha a facturar (el 1 o el 16), que da la quincena.
+    # En uno cargado a mano, el Desde del Período facturado de su Comprobante
+    # (007): un dato interno para la consulta por mes y su índice.
     fecha           = Column(Date, nullable=False)
     tarea_id        = Column(Integer, nullable=False)
     # Copia del maestro al guardar.

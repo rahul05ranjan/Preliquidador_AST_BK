@@ -8,6 +8,11 @@ Fecha: 2026-10-14. Worktrees: backend y front en la rama `feature/facturacion-e3
 > Revisión guarda grupos y su período (migración `006_revision_por_grupo.sql`). La migración del
 > Período facturado de la E3b pasa de 006 a **007**. Abajo, cada parte afectada lleva su marca; el
 > resto del plan sigue en pie.
+>
+> Las §3.6 (BK-E3b) y §3.7 (FT-E3b) quedan reemplazadas por la spec del 2026-10-19,
+> `docs/superpowers/plans/2026-10-19-facturacion-e3b.md`, que manda sobre ellas y sobre sus
+> marcas del 2026-10-17. Lo que dicen y esa spec no contradice sigue en pie (la lista está en su
+> §4, "Siguen del plan de la E3"). Su texto queda abajo como antecedente.
 
 ## Aprobación
 
@@ -998,6 +1003,15 @@ Descartado:
 
 ### 3.6 BK-E3b (rama nueva, F8)
 
+> Reemplazada por la spec del 2026-10-19, `docs/superpowers/plans/2026-10-19-facturacion-e3b.md`.
+> Manda la spec, también sobre las marcas del 2026-10-17 de esta sección; lo que dice abajo y la
+> spec no contradice sigue en pie (su §4, "Siguen del plan de la E3"). Lo que cambia: la 007
+> completa el período de los cargados a mano por las quincenas de sus Líneas y después pasa la
+> `fecha` de esas Líneas a `periodo_desde` (decisiones 1 y 5); el PUT da 422 si cambia el tipo
+> (decisión 3); la ruta 18 devuelve la unidad propuesta, todas las medidas de cada tarea y los
+> precios por (tarea, unidad) (decisiones 7 y 8); y el período de una Nota de crédito se controla
+> contra el mes de la Factura que corrige (Ticket 5b). El texto de abajo queda como antecedente.
+
 **B1. Par: modelo y migración 006** (zona sensible: dos rondas)
 
 > Desactualizado por la spec del 2026-10-17: la migración del Período facturado es la **007**
@@ -1091,6 +1105,17 @@ Descartado:
 **B5. Suite completa**, como A13.
 
 ### 3.7 FT-E3b
+
+> Reemplazada por la spec del 2026-10-19, `docs/superpowers/plans/2026-10-19-facturacion-e3b.md`.
+> Manda la spec, también sobre las marcas del 2026-10-17 de esta sección; lo que dice abajo y la
+> spec no contradice sigue en pie (su §4, "Siguen del plan de la E3"). Lo que cambia: el
+> calendario lleva cuatro atajos y el Período propuesto depende de desde dónde se abre la
+> Precarga (decisión 6); cada Línea arranca con la unidad propuesta (decisión 8) y cambiarle la
+> unidad trae la medida y el precio de esa unidad sin pisar lo tocado a mano (decisión 7);
+> "Dejar como están" suma "Agregarlas" (decisión 4); la edición abre con las Líneas guardadas,
+> sin recalcular y con el tipo fijo (decisión 3); y la Nota de crédito se carga sólo desde
+> Comprobantes, con la Factura que corrige y su período (decisión 2 y §9). El texto de abajo
+> queda como antecedente.
 
 **FB0. Arranque de impeccable (sin test)**
 - Correr `impeccable context --target src/modulos/facturacion/pages/Precarga.jsx` y `--target src/modulos/facturacion/pages/Comprobante.jsx`.

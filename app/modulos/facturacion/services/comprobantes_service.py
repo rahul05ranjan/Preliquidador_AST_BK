@@ -9,14 +9,21 @@ parámetro para que los tests usen una falsa.
 Las reglas puras (normalizar, clave, importe) viven en `reglas_comprobante`,
 porque la migración del histórico tiene que llegar a la misma clave para el
 mismo dato.
+
+Desde la E3b, el Comprobante guarda su Período facturado (Desde y Hasta,
+dentro de un mismo mes) y cada Línea guarda el Desde como fecha. La fecha de
+cabecera es la Fecha de carga: la pone el backend en el alta (hoy) y no
+cambia al editar.
 """
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.models import ahora_utc
+from app.core.models import Usuario, ahora_utc
+from app.modulos.facturacion import fechas
 from app.modulos.facturacion.models import Adjunto, Comprobante, LineaComprobante
 from app.modulos.facturacion.schemas import ComprobanteEntrada, LineaEntrada
 from app.modulos.facturacion.services.adjuntos_service import (
@@ -82,7 +89,7 @@ class HistoricoNoEditable(ErrorComprobante):
 
 class FacturaConNotas(ErrorComprobante):
     mensaje = ("Esta factura tiene notas de crédito: no se puede borrar ni "
-               "cambiar de Cliente o de tipo.")
+               "cambiar de Cliente.")
 
 
 class ComprobanteModificado(ErrorComprobante):
@@ -94,11 +101,19 @@ class ComprobanteModificado(ErrorComprobante):
 
 
 class ComprobanteInvalido(ErrorComprobante):
-    """422 `comprobante_invalido`, con el campo de la cabecera que falla."""
+    """422 `comprobante_invalido`, con el campo de la cabecera que falla. El
+    `tipo` es el del `detail` del 422."""
+    tipo = "comprobante_invalido"
 
     def __init__(self, campo: str, mensaje: str):
         self.campo = campo
         super().__init__(mensaje)
+
+
+class PeriodoInvalido(ComprobanteInvalido):
+    """422 `periodo_invalido`: el Hasta del Período facturado queda antes del
+    Desde, como en el Resumen."""
+    tipo = "periodo_invalido"
 
 
 class LineaInvalida(ErrorComprobante):
@@ -133,7 +148,8 @@ class ComprobantesService:
 
     def crear(self, entrada: ComprobanteEntrada, usuario_id: int | None = None) -> Comprobante:
         cabecera = self._validar_cabecera(entrada)
-        lineas = self._validar_lineas(entrada.lineas, entrada.cliente_id)
+        lineas = self._validar_lineas(entrada.lineas, entrada.cliente_id,
+                                      cabecera["periodo_desde"])
 
         existente = self._por_clave(cabecera["clave_identidad"])
         if existente is not None:
@@ -143,8 +159,9 @@ class ComprobantesService:
         if historico is not None:
             raise HistoricoMismoNumero(historico.id)
 
+        # La Fecha de carga es hoy: la API no la recibe.
         comprobante = Comprobante(
-            **cabecera, es_historico=False, creado_por=usuario_id,
+            **cabecera, fecha=fechas.hoy(), es_historico=False, creado_por=usuario_id,
             lineas=[LineaComprobante(**linea) for linea in lineas],
         )
         self.db.add(comprobante)
@@ -159,23 +176,37 @@ class ComprobantesService:
         """El PUT: reemplaza la cabecera y todas las Líneas, con las mismas
         validaciones que el alta, y sella quién y cuándo editó (el modelo no
         tiene onupdate a propósito: el reemplazo de un histórico por el script
-        no es una edición)."""
+        no es una edición). La Fecha de carga no cambia: la cabecera validada
+        no la trae. El tipo queda fijo (E3b): si se cargó mal, se borra y se
+        carga de nuevo."""
         comprobante = self._modificable(comprobante_id)
-        cambia_cliente_o_tipo = (entrada.cliente_id != comprobante.cliente_id
-                                 or entrada.tipo != comprobante.tipo)
+        if entrada.tipo != comprobante.tipo:
+            raise ComprobanteInvalido(
+                "tipo", "El tipo de un comprobante no se cambia. Si se cargó mal, "
+                        "borralo y cargalo de nuevo.")
+        cambia_cliente = entrada.cliente_id != comprobante.cliente_id
         # Edición simultánea (pregunta 18): el PUT trae el `actualizado_en`
         # que le dio el detalle (null si nunca se editó). Si no es el de la
         # base, otra persona guardó en el medio y no se pisa su trabajo. Se
         # compara exacto porque el sello va sin microsegundos (ver abajo).
         if entrada.actualizado_en != comprobante.actualizado_en:
             raise ComprobanteModificado()
-        # Una Factura con Notas de crédito no cambia de Cliente ni de tipo: las
-        # Notas quedarían corrigiendo una factura de otro Cliente, o una que ya
-        # no es factura.
-        if cambia_cliente_o_tipo and self._tiene_notas(comprobante.id):
+        # Una Factura con Notas de crédito no cambia de Cliente: las Notas
+        # quedarían corrigiendo una factura de otro Cliente.
+        if cambia_cliente and self._tiene_notas(comprobante.id):
             raise FacturaConNotas()
 
         cabecera = self._validar_cabecera(entrada, actual=comprobante)
+        # Una Factura con Notas de crédito tampoco sale de su mes (paso R1 de
+        # la E3b): es la regla espejo de la Nota, que no sale del mes de su
+        # Factura. El período ya se validó dentro de un mismo mes: alcanza con
+        # mirar el Desde.
+        mes_guardado = (self._mes_de_la_factura(comprobante)
+                        if comprobante.tipo == FACTURA else None)
+        cambia_mes = (mes_guardado is not None
+                      and not fechas.mismo_mes(cabecera["periodo_desde"], mes_guardado))
+        if cambia_mes and self._tiene_notas(comprobante.id):
+            raise self._factura_con_notas_cambia_de_mes(mes_guardado)
         # Las fincas que ya tenía se conservan sólo si el Cliente no cambia:
         # con otro Cliente, una finca del anterior no es suya.
         fincas_previas = (
@@ -183,7 +214,7 @@ class ComprobantesService:
              if l.finca_id is not None}
             if entrada.cliente_id == comprobante.cliente_id else None)
         lineas = self._validar_lineas(
-            entrada.lineas, entrada.cliente_id,
+            entrada.lineas, entrada.cliente_id, cabecera["periodo_desde"],
             tareas_previas={l.tarea_id: l.tarea_nombre for l in comprobante.lineas},
             fincas_previas=fincas_previas)
 
@@ -226,9 +257,12 @@ class ComprobantesService:
         # ya sellada, el control de Notas se repite con lectura bloqueante: en
         # MySQL ve lo último confirmado, y una Nota que llega después espera a
         # este guardado (ver _validar_factura_corregida).
-        if cambia_cliente_o_tipo and self._tiene_notas(comprobante.id, bloquear=True):
+        if ((cambia_cliente or cambia_mes)
+                and self._tiene_notas(comprobante.id, bloquear=True)):
             self.db.rollback()
-            raise FacturaConNotas()
+            if cambia_cliente:
+                raise FacturaConNotas()
+            raise self._factura_con_notas_cambia_de_mes(mes_guardado)
 
         # Sin autoflush: reemplazar la colección carga las Líneas viejas, y esa
         # consulta escribiría la cabecera nueva antes de tiempo. Un choque con
@@ -299,6 +333,15 @@ class ComprobantesService:
             raise HistoricoNoEditable()
         return comprobante
 
+    @staticmethod
+    def _factura_con_notas_cambia_de_mes(mes: date) -> ComprobanteInvalido:
+        """El 422 de una Factura con Notas cuyo período sale de su mes, con el
+        mes guardado para que el front lo muestre en el campo."""
+        return ComprobanteInvalido(
+            "periodo_desde",
+            "Esta Factura tiene Notas de crédito: el período tiene que quedar "
+            f"dentro de {fechas.texto_mes(mes)}.")
+
     def _tiene_notas(self, comprobante_id: int, bloquear: bool = False) -> bool:
         """Si alguna Nota de crédito corrige este Comprobante. Con `bloquear`,
         la lectura es bloqueante compartida (en SQLite no hace nada)."""
@@ -313,11 +356,13 @@ class ComprobantesService:
 
     def listar(self) -> list[dict]:
         """Las filas del listado (`ComprobanteFila`), de la más nueva a la más
-        vieja por `fecha` o, si falta, por la fecha de la primera Línea.
+        vieja por `fecha` (la Fecha de carga, o la FECHA FAC de un histórico)
+        o, si falta, por la fecha de la primera Línea.
 
         Una sola consulta, sin importar cuántos Comprobantes haya: los conteos
-        y el total salen de subconsultas agrupadas y la fecha de la primera
-        Línea de una subconsulta correlacionada."""
+        y el total salen de subconsultas agrupadas, la fecha de la primera
+        Línea de una subconsulta correlacionada y el nombre de quien lo cargó
+        de un outerjoin a los usuarios."""
         por_lineas = (
             select(LineaComprobante.comprobante_id.label("comprobante_id"),
                    func.count(LineaComprobante.id).label("cantidad"),
@@ -329,8 +374,8 @@ class ComprobantesService:
                    func.count(Adjunto.id).label("cantidad"))
             .group_by(Adjunto.comprobante_id)
             .subquery())
-        # "Primera" es la de menor orden, no la de fecha más vieja: el mes del
-        # listado es el de la primera Línea (pregunta 10).
+        # "Primera" es la de menor orden, no la de fecha más vieja: el mes de
+        # un histórico es el de la primera Línea (pregunta 10).
         primera_fecha = (
             select(LineaComprobante.fecha)
             .where(LineaComprobante.comprobante_id == Comprobante.id)
@@ -341,16 +386,17 @@ class ComprobantesService:
 
         consulta = (
             select(Comprobante, por_lineas.c.cantidad, por_lineas.c.total,
-                   por_adjuntos.c.cantidad, primera_fecha)
+                   por_adjuntos.c.cantidad, primera_fecha, Usuario.nombre)
             .outerjoin(por_lineas, por_lineas.c.comprobante_id == Comprobante.id)
             .outerjoin(por_adjuntos, por_adjuntos.c.comprobante_id == Comprobante.id)
+            .outerjoin(Usuario, Usuario.id == Comprobante.creado_por)
             .order_by(func.coalesce(Comprobante.fecha, primera_fecha).desc(),
                       Comprobante.id.desc()))
 
         return [
             self._fila(c, cantidad_lineas or 0, cantidad_adjuntos or 0,
-                       [total] if total is not None else [], fecha_primera)
-            for c, cantidad_lineas, total, cantidad_adjuntos, fecha_primera
+                       [total] if total is not None else [], fecha_primera, creador)
+            for c, cantidad_lineas, total, cantidad_adjuntos, fecha_primera, creador
             in self.db.execute(consulta).all()
         ]
 
@@ -370,11 +416,13 @@ class ComprobantesService:
                  .order_by(Comprobante.id)
                  .all())
         corregida = c.factura_corregida
+        creador = self.db.get(Usuario, c.creado_por) if c.creado_por is not None else None
 
         return {
             **self._fila(c, len(lineas), len(adjuntos),
                          [l.importe for l in lineas],
-                         lineas[0].fecha if lineas else None),
+                         lineas[0].fecha if lineas else None,
+                         creador.nombre if creador is not None else None),
             "factura_corregida": (
                 {"id": corregida.id, "numero": corregida.numero, "fecha": corregida.fecha}
                 if corregida is not None else None),
@@ -398,17 +446,22 @@ class ComprobantesService:
 
     @staticmethod
     def _fila(c: Comprobante, cantidad_lineas: int, cantidad_adjuntos: int,
-              importes: list, fecha_primera_linea) -> dict:
+              importes: list, fecha_primera_linea,
+              creado_por_nombre: str | None) -> dict:
         """Los campos de `ComprobanteFila`, comunes al listado y al detalle.
         `total_neto` va con signo (negativo en una NC) y redondeado a
-        centavos: una suma en SQLite puede traer más decimales."""
+        centavos: una suma en SQLite puede traer más decimales. El mes es el
+        del período o, si no tiene (un histórico), el de la primera Línea."""
+        dia_del_mes = (c.periodo_desde if c.periodo_desde is not None
+                       else fecha_primera_linea)
         return {
             "id": c.id,
             "tipo": c.tipo,
             "numero": c.numero,
             "fecha": c.fecha,
-            "mes": (fecha_primera_linea.strftime("%Y-%m")
-                    if fecha_primera_linea is not None else None),
+            "periodo_desde": c.periodo_desde,
+            "periodo_hasta": c.periodo_hasta,
+            "mes": dia_del_mes.strftime("%Y-%m") if dia_del_mes is not None else None,
             "cliente_id": c.cliente_id,
             "cliente_nombre": c.cliente_nombre,
             "empresa_emisora": c.empresa_emisora,
@@ -417,6 +470,7 @@ class ComprobantesService:
             "cantidad_lineas": cantidad_lineas,
             "cantidad_adjuntos": cantidad_adjuntos,
             "total_neto": total_firmado(c.tipo, importes).quantize(CENTAVO),
+            "creado_por_nombre": creado_por_nombre,
         }
 
     # ─── Validación ─────────────────────────────────────────────────────────
@@ -447,8 +501,15 @@ class ComprobantesService:
             raise ComprobanteInvalido(
                 "numero", f"El número tiene hasta {LARGO_NUMERO} caracteres.")
 
-        if entrada.fecha is None:
-            raise ComprobanteInvalido("fecha", "Falta la fecha del comprobante.")
+        desde, hasta = entrada.periodo_desde, entrada.periodo_hasta
+        if desde is None or hasta is None:
+            raise ComprobanteInvalido("periodo_desde", "Falta el período facturado.")
+        if hasta < desde:
+            raise PeriodoInvalido(
+                "periodo_hasta", "La fecha final no puede ser anterior a la inicial.")
+        if (desde.year, desde.month) != (hasta.year, hasta.month):
+            raise ComprobanteInvalido(
+                "periodo_hasta", "El período tiene que quedar dentro de un mismo mes.")
         if not entrada.lineas:
             raise ComprobanteInvalido("lineas", "El comprobante necesita al menos una línea.")
 
@@ -472,7 +533,8 @@ class ComprobantesService:
             "cliente_nombre": cliente["nombre"],
             "empresa_emisora": empresa,
             "numero": numero,
-            "fecha": entrada.fecha,
+            "periodo_desde": desde,
+            "periodo_hasta": hasta,
             "factura_corregida_id": entrada.factura_corregida_id,
             "clave_identidad": clave_identidad(
                 historico=False, numero=numero, empresa=empresa, tipo=entrada.tipo),
@@ -500,7 +562,7 @@ class ComprobantesService:
                 "factura_corregida_id",
                 "Una Nota de crédito tiene que decir qué factura corrige.")
         # Lectura bloqueante compartida (R4): si otra persona está cambiando
-        # de tipo o de Cliente esa Factura, en MySQL se espera a que confirme
+        # de Cliente esa Factura, en MySQL se espera a que confirme
         # y se valida contra lo confirmado. Con with_for_update, `get` consulta
         # la base (y toma el bloqueo) aunque la fila ya esté en la sesión.
         factura = self.db.get(Comprobante, entrada.factura_corregida_id,
@@ -511,13 +573,37 @@ class ComprobantesService:
                 "factura_corregida_id",
                 "La Nota de crédito tiene que corregir una factura del mismo Cliente.")
 
+        # Una Nota corrige lo facturado en ese mes, así que su período queda
+        # dentro del mes de la Factura (spec de la E3b, §9). El período ya se
+        # validó dentro de un mismo mes: alcanza con mirar el Desde.
+        mes = self._mes_de_la_factura(factura)
+        if mes is not None and not fechas.mismo_mes(entrada.periodo_desde, mes):
+            raise ComprobanteInvalido(
+                "periodo_desde",
+                f"El período tiene que quedar dentro de {fechas.texto_mes(mes)}, "
+                "el mes de la Factura que corrige.")
+
+    def _mes_de_la_factura(self, factura: Comprobante) -> date | None:
+        """Un día del mes de la Factura, como el `mes` del listado: el de su
+        período o, si no tiene (un histórico), el de su primera Línea por
+        orden. Sin período ni Líneas, None: no tiene mes."""
+        if factura.periodo_desde is not None:
+            return factura.periodo_desde
+        return self.db.scalar(
+            select(LineaComprobante.fecha)
+            .where(LineaComprobante.comprobante_id == factura.id)
+            .order_by(LineaComprobante.orden, LineaComprobante.id)
+            .limit(1))
+
     def _validar_lineas(self, lineas: list[LineaEntrada], cliente_id: int,
+                        periodo_desde: date,
                         tareas_previas: dict[int, str] | None = None,
                         fincas_previas: dict[int, str] | None = None) -> list[dict]:
         """La regla 3, fila por fila (desde 1). Devuelve los campos de cada
         Línea listos para el modelo, con los nombres copiados del maestro y el
         importe calculado. Una tarea No facturable se acepta (regla 6): el
-        aviso lo muestra el front.
+        aviso lo muestra el front. La fecha de cada Línea es el Desde del
+        período (`periodo_desde`), como la deja la facturacion/007.
 
         `tareas_previas` son las tareas que ya tenía el Comprobante que se
         edita ({tarea_id: nombre copiado}). Una de ellas que pasó a baja se
@@ -572,7 +658,7 @@ class ComprobantesService:
 
             salida.append({
                 "orden": fila,
-                "fecha": linea.fecha,
+                "fecha": periodo_desde,
                 "tarea_id": linea.tarea_id,
                 "tarea_nombre": tareas[linea.tarea_id],
                 "unidad": linea.unidad,

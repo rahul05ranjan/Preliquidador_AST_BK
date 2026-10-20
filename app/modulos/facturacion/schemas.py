@@ -4,7 +4,8 @@ Los de la E1 salieron el 2026-10-12 con la pantalla Unidad de medida por
 defecto. Los de acá son de la E2 (plan de la E2, sección 3.2): la entrada del
 alta y la edición de Comprobantes, y las salidas del router de Comprobantes;
 y de la E3 (plan de la E3, sección 3.2, rutas 13 a 17): el Resumen, el
-Detalle, la Revisión de diferencia y la configuración.
+Detalle, la Revisión de diferencia y la configuración; y de la E3b (spec de
+la E3b, Ticket 2): la Precarga (ruta 18).
 
 Los decimales salen como texto (`Decimal`, igual que en Terceros): un número
 JSON pasaría por float y podría perder centavos. Los meses de la E3 salen como
@@ -28,8 +29,8 @@ class LineaEntrada(BaseModel):
     `linea_invalida` con la fila y el campo, que es lo que la pantalla usa
     para marcar la fila, y no como la lista genérica de FastAPI.
 
-    Sin importe: lo calcula siempre el backend."""
-    fecha: date
+    Sin importe: lo calcula siempre el backend. Sin fecha: cada Línea guarda
+    el Desde del Período facturado de su Comprobante (E3b)."""
     tarea_id: int
     unidad: str
     finca_id: int | None = None
@@ -40,14 +41,19 @@ class LineaEntrada(BaseModel):
 class ComprobanteEntrada(BaseModel):
     """La entrada de POST y PUT de un Comprobante.
 
-    Empresa, número y fecha son opcionales acá y obligatorios en el servicio,
-    por lo mismo que en la Línea: el faltante sale como `comprobante_invalido`
-    con su campo. El tipo es texto por la misma razón."""
+    Empresa, número y período son opcionales acá y obligatorios en el
+    servicio, por lo mismo que en la Línea: el faltante sale como
+    `comprobante_invalido` con su campo. El tipo es texto por la misma razón.
+
+    Sin fecha: la Fecha de carga la pone el backend (hoy en el alta, y no
+    cambia al editar). Una `fecha` que llegue igual se ignora."""
     tipo: str
     cliente_id: int
     empresa_emisora: str | None = None
     numero: str | None = None
-    fecha: date | None = None
+    # El Período facturado, los dos días incluidos y dentro de un mismo mes.
+    periodo_desde: date | None = None
+    periodo_hasta: date | None = None
     # Obligatoria en una Nota de crédito; en una Factura tiene que ir vacía.
     factura_corregida_id: int | None = None
     # Sólo en el PUT: el `actualizado_en` tal como lo devolvió el detalle
@@ -67,9 +73,14 @@ class ComprobanteFila(BaseModel):
     tipo: str
     # Vacío sólo en un histórico sin número.
     numero: str | None = None
-    # Vacía sólo en un histórico sin FECHA FAC.
+    # La Fecha de carga en uno cargado a mano; en un histórico, su FECHA FAC
+    # (vacía si la planilla no la tenía).
     fecha: date | None = None
-    # "AAAA-MM" de la primera Línea (pregunta 10).
+    # El Período facturado, los dos días incluidos. Vacío en un histórico.
+    periodo_desde: date | None = None
+    periodo_hasta: date | None = None
+    # "AAAA-MM" del período o, si no tiene (un histórico), de la primera
+    # Línea (pregunta 10).
     mes: str | None = None
     cliente_id: int
     cliente_nombre: str
@@ -81,6 +92,9 @@ class ComprobanteFila(BaseModel):
     cantidad_adjuntos: int
     # Con signo: negativo en una Nota de crédito.
     total_neto: Decimal
+    # El nombre de quien lo cargó. Vacío en un histórico (lo cargó la
+    # migración) o si el usuario ya no existe.
+    creado_por_nombre: str | None = None
 
 
 class ComprobanteReferencia(BaseModel):
@@ -366,3 +380,54 @@ class ConfiguracionSalida(BaseModel):
     # Los dos en None mientras nadie la cambió (valores iniciales).
     actualizado_en: datetime | None = None
     actualizado_por_nombre: str | None = None
+
+
+# ═══ Precarga (E3b, ruta 18) ════════════════════════════════════════════════
+# Espejo del dict de PrecargaService.precarga().
+
+class CampoPrecarga(BaseModel):
+    """Lo trabajado en una tarea, medido en cada unidad que tiene medida del
+    campo (`MEDIDA_DE_UNIDAD`): plantas y hectáreas dan lo mismo, las
+    unidades del parte. Las de cosecha no están: no tienen medida."""
+    horas_peon: Decimal
+    horas_tractor: Decimal
+    plantas: Decimal
+    hectareas: Decimal
+    tancadas: Decimal
+
+
+class TareaPrecarga(BaseModel):
+    """Una tarea con partes del Cliente en el período."""
+    tarea_id: int
+    # None sólo si la tarea no está en el maestro del campo.
+    tarea_nombre: str | None = None
+    grupo_tarea: str | None = None
+    unidad_sugerida: str | None = None
+    # La de la última Factura del Cliente por esta tarea, sin las Notas; si no
+    # hay, la Unidad sugerida (decisión 8). None si tampoco hay sugerida.
+    unidad_propuesta: str | None = None
+    no_facturable: bool
+    campo: CampoPrecarga
+
+
+class PrecioSugerido(BaseModel):
+    """El Precio sugerido de una (tarea, unidad), con el Comprobante de donde
+    sale."""
+    tarea_id: int
+    unidad: str
+    precio_unitario: Decimal
+    comprobante_id: int
+    numero: str | None = None
+    # La del Comprobante; None en un histórico sin fecha.
+    fecha: date | None = None
+
+
+class Precarga(BaseModel):
+    """La respuesta de la ruta 18."""
+    cliente_id: int
+    cliente_nombre: str | None = None
+    # None si ninguna Factura del Cliente tiene empresa.
+    empresa_sugerida: str | None = None
+    leido_en: datetime
+    trabajado: list[TareaPrecarga] = []
+    precios: list[PrecioSugerido] = []

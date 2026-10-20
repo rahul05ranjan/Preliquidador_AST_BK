@@ -1,5 +1,6 @@
-"""El Precio sugerido y la empresa sugerida de un Cliente (plan de la E3,
-paso A7, y el contrato de la ruta 18).
+"""El Precio sugerido, la empresa sugerida y la unidad propuesta de un Cliente
+(plan de la E3, paso A7, el contrato de la ruta 18 y la decisión 8 de la spec
+de la E3b).
 
 Salen de las Facturas del Cliente en la base propia, leídas siempre frescas:
 - **Cuentan** las Facturas, también las del histórico.
@@ -73,6 +74,24 @@ def precios_sugeridos(db: Session, cliente_id: int) -> dict[tuple[int, str], dic
             })
     return {par: precio for par, (_clave, precio) in mejores.items()
             if precio["precio_unitario"] > 0}
+
+
+def unidades_propuestas(db: Session, cliente_id: int) -> dict[int, str]:
+    """La unidad propuesta de cada tarea que el Cliente tiene facturada:
+    {tarea_id: unidad} de la última Línea de Factura que la trae, con el
+    mismo orden que el Precio sugerido (decisión 8 de la spec de la E3b).
+
+    No mira el precio: una unidad cobrada a 0 sigue siendo la unidad en la
+    que se le factura. Una tarea sin Facturas no figura, y la Precarga usa
+    su Unidad sugerida."""
+    mejores: dict[int, tuple] = {}
+    for (comprobante_id, _numero, fecha, _empresa, orden, fecha_linea, tarea_id,
+         unidad, _precio) in _lineas_de_facturas(db, cliente_id):
+        clave = (*_orden(fecha_linea, fecha, comprobante_id), orden)
+        actual = mejores.get(tarea_id)
+        if actual is None or clave > actual[0]:
+            mejores[tarea_id] = (clave, unidad)
+    return {tarea_id: unidad for tarea_id, (_clave, unidad) in mejores.items()}
 
 
 def empresa_sugerida(db: Session, cliente_id: int) -> str | None:
