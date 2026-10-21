@@ -267,8 +267,8 @@ sin aviso, es un OK de 30 segundos.
 (nombre, qué se prueba al terminar, de cuál depende y cuáles van en paralelo),
 con el orden dibujado (`1 → 2 → 3`, y debajo `5b, en paralelo con todo`), y
 preguntá si el corte le sirve. El usuario puede **juntar** ("el 2 y el 3 van
-juntos"), **partir**, **reordenar**, **sacar** (va a "A futuro" de
-`estado.md`) o pedir que algo en paralelo vaya en serie. Ajustás la spec y la
+juntos"), **partir**, **reordenar**, **sacar** (va a un issue del repo del
+código, `docs/agents/issue-tracker.md`) o pedir que algo en paralelo vaya en serie. Ajustás la spec y la
 volvés a mostrar hasta el OK.
 
 Con el OK, **actualizá `docs/estado.md`**: la tarea en "En curso", con su fase
@@ -380,7 +380,9 @@ En los dos carriles, **en este orden y una sola pasada**:
    hallazgo contra el código, tira los falsos y etiqueta el resto
    `urgent` / `high` / `minor`.
 3. Regla mecánica: **`urgent` y `high` se arreglan; `minor` se listan en el
-   PR y no se tocan.** Cómo se arreglan, **sin intervención del usuario**:
+   PR y no se tocan.** Al abrir el PR, los minors y la deuda previa que trajo
+   el verificador van también a issues (`docs/agents/issue-tracker.md`). Cómo
+   se arreglan, **sin intervención del usuario**:
    - Cada `urgent`/`high` pasa a ser un **paso nuevo de la spec** ("Paso R1,
      R2…") que agregás vos al archivo, con el hallazgo, el escenario de
      falla y el arreglo mínimo que trajo el verificador. Queda registrado
@@ -431,7 +433,8 @@ minor sin tocar". Mandá aviso si algo necesita su decisión (completo).
 2. Rama → commits con `/commit` → PR **bien comentado** (qué, por qué y qué se
    descartó, verificación, qué pasa después, rollback; el cuerpo del PR es la
    única fuente del porqué que archiva la bitácora), siempre con
-   `--body-file`, nunca inline. Si la tarea toca los dos repos, **PRs hermanos**
+   `--body-file`, nunca inline. Si la tarea resuelve un issue, el cuerpo lleva
+   `Closes #N`. Si la tarea toca los dos repos, **PRs hermanos**
    en el orden que marque la spec. Merge con OK: `main` exige una aprobación y
    no se puede auto-aprobar, así que va `gh pr merge N --merge --admin`.
 3. Deploy **solo si lo pidió explícitamente**: mergear a `main` no es

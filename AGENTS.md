@@ -63,7 +63,8 @@ usuario lo pida.
 |---|---|---|
 | Cambio en el VPS o la infraestructura: config del servidor, paquetes, accesos, certificados, cómo se deploya | `docs/DEPLOY.md` (local, fuera de git) | en el momento del cambio |
 | El *por qué* de un cambio de código: qué se eligió y qué se descartó | cuerpo del PR | al abrir el PR |
-| Lo que está en curso con su fase, el próximo paso, lo que espera al usuario y lo pospuesto | `docs/estado.md`, sólo lo vivo | al avanzar; al entregar se borra de ahí |
+| Lo que está en curso con su fase, el próximo paso y lo que espera al usuario | `docs/estado.md`, sólo lo vivo | al avanzar; al entregar se borra de ahí |
+| Lo pospuesto, la deuda vista al pasar y los minors de una revisión | un issue de GitHub en el repo del código (`docs/agents/issue-tracker.md`) | al posponerlo; los minors, al abrir el PR |
 | Un merge a `main` | `docs/BITACORA.md`, y la tarea sale de `docs/estado.md` | después de cada merge, sin preguntar (ver "Bitácora y estado") |
 | Un término del dominio: qué **es**, no cómo se implementa | el glosario que indica `CONTEXT-MAP.md`: `CONTEXT.md` si es del Sistema, el `CONTEXT-<módulo>.md` si es de un módulo | al cerrar el término |
 | Una decisión de arquitectura, con sus alternativas descartadas | `docs/adr/` | sólo con el usuario |
@@ -98,9 +99,9 @@ Un ADR no es un resumen de lo que pasó: es un compromiso. No se escribe sin el 
 Dos archivos del repo del backend, cada uno con un solo trabajo:
 
 - **`docs/estado.md` es sólo lo vivo**: lo que está en curso (con su fase y su plan), el
-  próximo paso, los pendientes del usuario (lo de Pitu también se le anota al usuario) y
-  lo que quedó para más adelante, con su porqué. Nada entregado. En Claude Code lo importa
-  `CLAUDE.md`, así que cada sesión arranca con él cargado.
+  próximo paso y los pendientes del usuario (lo de Pitu también se le anota al usuario).
+  Nada entregado ni pospuesto. En Claude Code lo importa `CLAUDE.md`, así que cada sesión
+  arranca con él cargado.
 - **`docs/BITACORA.md` es todo lo hecho**: una sección `## AAAA-MM-DD — Tema` por entrega,
   la más nueva **abajo**. Un hook de arranque (`.claude/hooks/ultimas-entregas.mjs`) le
   pasa a cada sesión las 2 últimas entradas.
@@ -115,8 +116,11 @@ Cómo se mantienen:
   `BITACORA.md` y **saca esa tarea de `estado.md`**. Si dejó algo pendiente (por ejemplo,
   el smoke del usuario), queda en `estado.md` sólo eso, en una línea. Quien despachó al
   agente commitea los dos archivos juntos.
-- **Lo que se descarta o se pospone** pasa a "A futuro" de `estado.md`, con una línea de
-  por qué.
+- **Lo que se pospone** va a un issue de GitHub en el repo del código, con su porqué; si
+  toca los dos repos, un issue en cada uno, que nombra al hermano. **Lo que se descarta**
+  va igual, cerrado como no planificado, para que quede buscable. Cómo se crean, etiquetan
+  y cierran: `docs/agents/issue-tracker.md`. Lo del servidor no va a issues (el repo es
+  público): queda en "Pendientes del usuario" y su detalle en `docs/DEPLOY.md`.
 - **El repo es público y `estado.md` se edita seguido, directo a `main`**: nunca lleva
   IPs, hosts, URLs, credenciales, datos de terceros ni valores.
 

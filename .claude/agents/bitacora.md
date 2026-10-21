@@ -93,8 +93,8 @@ docs, la entrada son cuatro líneas.
 
 ### `docs/estado.md` — autonomía acotada
 
-Es sólo lo vivo: lo que está en curso, el próximo paso, lo que espera al usuario
-y lo que quedó para más adelante. Lo que se mergeó deja de ser vivo. Por cada
+Es sólo lo vivo: lo que está en curso, el próximo paso y lo que espera al
+usuario. Lo pospuesto vive en issues de GitHub, no acá. Lo que se mergeó deja de ser vivo. Por cada
 tarea que anotaste en la bitácora:
 
 - Borrá su ítem de "En curso".
@@ -102,7 +102,7 @@ tarea que anotaste en la bitácora:
   real), sumalo a "Pendientes del usuario" en **una línea**.
 - Actualizá la fecha de "Última actualización".
 
-Nada más. No reescribas "Próximo paso" ni "A futuro", no reordenes, no borres
+Nada más. No reescribas "Próximo paso", no reordenes, no borres
 pendientes de otras tareas: los avances (plan aprobado, pausa, revisión
 terminada) los anota la sesión principal. Si algo de lo que hay quedó falso por
 el merge y no es la tarea que anotaste, decilo en la salida y no lo toques.
