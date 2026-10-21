@@ -4521,3 +4521,50 @@ Corrige su "Deploy: no". El detalle técnico va en `docs/DEPLOY.md` (local, fuer
   responde 401 sin login; `/health` ok y el log sin errores. No probado: las pantallas con un
   usuario logueado (nadie tiene el rol).
 - Vuelta atrás: volver a la carpeta anterior del front, que quedó guardada en el servidor.
+
+## 2026-10-21 — Lo pospuesto pasa de "A futuro" a issues de GitHub (BK #131, FT #111)
+
+**Mergeado**
+- PR #131 (backend) — "A futuro" de `docs/estado.md` deja de existir: lo pospuesto, la deuda y
+  los minors de las revisiones pasan a issues de GitHub. Sólo documentos. Merge `b9995a5`.
+- PR #111 (frontend) — hermano del anterior: el mismo bloque común de `AGENTS.md` y un
+  `docs/agents/issue-tracker.md` que apunta a la regla del backend. Merge `62c0df5`.
+
+**Por frontera**
+- Docs: `AGENTS.md` (bloque común, igual en los dos repos) suma a la tabla "Dónde se anota cada
+  cosa" la fila de los issues, y "Estado del trabajo" dice que lo pospuesto y lo descartado van a
+  issues. Nuevo `docs/agents/issue-tracker.md`: dónde va cada issue, qué lleva, las etiquetas, cómo
+  se cierra y los comandos. `flujo-preliquidacion` manda a un issue lo que se saca del corte en
+  tickets y los minors y la deuda previa de la revisión, y pide `Closes #N` en el PR que resuelve
+  un issue. El agente `bitacora` deja de nombrar "A futuro". El plan del carril corto,
+  `docs/superpowers/plans/2026-10-21-a-futuro-a-issues.md`. En `docs/estado.md`, directo a
+  `main`: sale la sección "A futuro", la introducción apunta a los issues y lo del servidor (nginx
+  y respaldos viejos) pasa a "Pendientes del usuario".
+- Fuera de git: los 45 ítems de "A futuro" quedaron como issues, BK #109 a #130 y FT #88 a #110,
+  con las mismas etiquetas de tipo y área en los dos repos y los hermanos enlazados; tres
+  descartados, cerrados como no planificados (BK #130, FT #109 y FT #110). La skill global
+  `revision-codigo` manda los minors al PR y a un issue `prolijidad`.
+
+**Decisiones**
+- Issues de GitHub como fuente única de lo pospuesto. Porqué: "A futuro" había crecido a decenas
+  de ítems largos que se cargaban en cada sesión, sin forma de filtrarlos, asignarlos ni cerrarlos
+  desde el PR que los arregla; los issues se etiquetan, se cierran solos con `Closes #N` y no
+  ocupan el contexto de cada sesión.
+- Cada issue va al repo de su código; lo que toca los dos lleva un issue en cada uno, que nombra
+  al hermano. Porqué: decisión del usuario. Descartado: un solo tablero en el backend para los
+  dos repos.
+- Lo del servidor no va a issues: queda en "Pendientes del usuario" y su detalle en
+  `docs/DEPLOY.md`. Porqué: los repos son públicos.
+- La regla vive en `docs/agents/issue-tracker.md`. Porqué: la skill `revision-codigo` la busca en
+  ese lugar.
+- Un issue por tanda de minors y uno por cada bug o deuda suelta; etiquetas de tipo (`bug`,
+  `prolijidad`, `accesibilidad`, `mejora`, `proceso`) y de área; lo descartado, cerrado como no
+  planificado. Porqué no registrado en el PR (figura en el plan sin su porqué, salvo lo
+  descartado: "queda buscable y se reabre si hace falta").
+
+**Estado**
+- Deploy: no hace falta (sólo docs).
+- Migraciones: ninguna.
+- Verificación: `gh issue list` con 22 issues en el backend y 23 en el front, todos con etiqueta
+  y los 3 descartados cerrados; el bloque común de `AGENTS.md`, idéntico en las dos ramas.
+- Vuelta atrás: revertir los merges; los issues quedan igual.

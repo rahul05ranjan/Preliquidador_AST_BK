@@ -1,8 +1,10 @@
 # Estado del trabajo
 
-Sólo lo vivo: lo que está en curso, el próximo paso, lo que espera al usuario y lo que quedó para más adelante.
-Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva abajo). La regla está en
-`AGENTS.md` ("Estado del trabajo"). Última actualización: **2026-10-20**.
+Sólo lo vivo: lo que está en curso, el próximo paso y lo que espera al usuario.
+Lo entregado no va acá: su cierre está en `docs/BITACORA.md` (la más nueva abajo). Lo pospuesto, la
+deuda y los minors de las revisiones están en los issues de GitHub de cada repo
+(`docs/agents/issue-tracker.md`). La regla está en `AGENTS.md` ("Estado del trabajo"). Última
+actualización: **2026-10-21**.
 
 ## En curso
 
@@ -36,92 +38,8 @@ Todo deploy, con OK. Facturación se deploya por avances, escondida: nadie tiene
 - Facturación: las tareas de cosecha que no están en el maestro del campo quedaron migradas con tarea 0 y su nombre; hablar con el personal que carga en el campo y, cuando el campo las tenga, una corrida con `--reemplazar-cambiados` las pasa a su id (BK #99, 2026-10-13).
 - Avisarle a Pitu que las etiquetas de aviso del núcleo (`.badge-*`) pasan a texto oscuro con el tono en el fondo y el borde, también en Terceros (Tarifario, "sin confirmar"); ya se ve en el sitio (deploy del 2026-10-09).
 - Avisarle a Pitu que el esquema nuevo de permisos ya está en producción (BK #83 y #86, FT #70; deploy del 2026-10-11): el glosario de Terceros suma sus cinco pantallas con qué es ver y editar; Terceros declara `PANTALLAS` en `app/modulos/terceros/permisos.py`; cada ruta pide pantalla y nivel (salen `requiere_operativo` y `requiere_gerencial`); cada ruta de `src/modulos/terceros/rutas.jsx` nombra su pantalla; sus tests usan el rol "Liquidador de terceros". Que confirme las filas 25 y 28 del plan y qué pantallas usan `ver_inicio_o_quincena`, y que rebase sus ramas abiertas sobre `terceros.py`.
-
-## A futuro
-
-- Limpieza y prolijidad de código de los íconos y "Cargar factura" en el Detalle, los 4 minors sin
-  tocar: el foco de `.enlaceBoton` repite el bloque de foco de `Detalle.module.css`; `.revisar` ya
-  no nombra lo que hace; en la Precarga el menú no marca dónde está y el enlace de vuelta lleva a
-  Comprobantes aunque se llegue desde el Detalle; el recibo se parece al ícono de Preliquidación.
-  Sin probar en el navegador: los dos botones juntos (en `testing` no hay un caso) y el Resumen
-  refrescado después de guardar en la Precarga. El detalle va en el cuerpo del FT #87 (2026-10-20).
-- Limpieza y prolijidad de código de las celdas y las unidades abreviadas de la Precarga, los 7
-  minors de la revisión sin tocar: `UNIDAD_DE_CAMPO` y `ETIQUETAS` son dos tablas con las mismas
-  claves; la clave `nombre` de `campoDeLinea` se confunde con la de la tarea; los `padding-top` de
-  11 y 13 px dependen del alto de `.campo` sin mostrar la cuenta; un corte raro en el JSDoc de
-  `campoDeLinea`; los tests no cubren Ha ni Tanc; `.campoUnidad` repite el subrayado del `abbr`;
-  el `title` del `abbr` tapa el del td y no llega por teclado. Deuda previa: `.quitar:hover` con
-  rgba sin token. El detalle va en el cuerpo del FT #86 (2026-10-20).
-- Limpieza y prolijidad de código de la Facturación E3b (Precarga y Período facturado), los 22 minors
-  de la revisión sin tocar:
-  - código repetido: dos `PeriodoInvalido` y los mensajes de `leer_periodo`, `unidades_propuestas`
-    copia `precios_sugeridos`, dos `textoMes`, `mesEntero`, `errorDePeriodoConNotas` y el bloque de
-    `editar`, y el 288 en dos lugares;
-  - `Precarga.jsx` larga y ramificada, y nombres confusos o que tapan a otros;
-  - comentarios que citan el plan;
-  - de `impeccable`: el origen del Precio sugerido sólo en el `title`, texto de 11 px apagado, el
-    aviso "sin finca" sólo en un toast, la confirmación sin mover el foco, el borde de 3 px de
-    `.aviso`, opacidades en los botones apagados, el orden de la cabecera, "h máquina" y "ha" sin
-    explicar;
-  - al arrastrar la barra horizontal de las Líneas, la lista de tareas se cierra.
-
-  Deuda previa vista ahí: los errores de Guardar y Borrar sin toast (regla 21), `maxLength={40}`
-  contra `LARGO_NUMERO = 30` y los nombres largos con "No facturable" en 5 o 6 renglones. El
-  detalle va en los cuerpos de los PRs hermanos, BK #105 y FT #85 (2026-10-19).
-- Limpieza y prolijidad de código del control por período y el calendario, los minors de la revisión
-  sin tocar: un `box-shadow` con rgba sin token en el calendario; el par imposible "Antes del corte y
-  Falta comprobante" en `estados.js` y su test; comentarios que citan el plan; `en_curso` guarda una
-  fecha en `resumen_service.py`; el nombre `SelectorMeses` quedó viejo, y hay dos `textoFecha` y dos
-  `textoPeriodo`; código repetido (`etiquetaEnCurso` y `avisoEnCurso`, la clase `.soloLector`, la
-  cuenta del mes); `diaElegible` sólo delega; un import y un docstring que se pasan de ancho. El
-  detalle va en los cuerpos de los PRs hermanos (2026-10-17).
-- Minors de `impeccable` en el calendario del período, sin tocar: deja armar un rango de más de 12
-  meses (después la pantalla avisa); el atajo activo se distingue sólo por el borde y el tono;
-  `aria-pressed` en los atajos (iría `aria-current`); días y flechas chicos para el público; el
-  `title` de "En curso" no llega por teclado; sin vista previa del rango entre los dos clics; el
-  estilo `.dia:disabled` no se ve y el mes se anuncia dos veces; con el panel desplazado, la línea
-  de los atajos no acompaña. El detalle va en el cuerpo del PR del front (2026-10-17).
-- Limpieza y prolijidad de código de la E3a por grupo, los minors de la revisión sin tocar:
-  - nombres confusos;
-  - código repetido, también en `_total`;
-  - `CruceMes.facturado_neto` sin uso;
-  - accesibilidad y letra chica del Resumen, del Detalle y de los modales;
-  - del smoke: Desde y Hasta quedan apilados en el selector; con una Revisión vieja sin grupos el aviso
-    dice "que cubría ." (sólo en `testing`); después del aviso, el Tab pasa primero por "Volver a leer"
-    y las Alertas; con meses parciales y porcentajes grandes, el Resumen a 1366 px puede volver a pasarse
-    por pocos px.
-
-  El detalle va en los cuerpos de los PRs hermanos (2026-10-17).
-- Deuda previa vista en la revisión de la E3a por grupo: si una Factura y una Nota de crédito de la
-  misma tarea y unidad netean la cantidad a 0 con importes distintos y no hay partes, ese importe suma
-  en el TOTAL del Detalle sin estar en ninguna fila. Además, `scripts/refrescar_testing.py` no refresca
-  las tablas de Facturación (2026-10-17).
-- CI (integración continua): GitHub Actions en cada PR de los dos repos (`pytest` con `.env` ficticio, sin secretos; `npm test`, lint y build), como check obligatorio para mergear a `main`. Antes hay que resolver los 6 errores de lint de `main` y medir cuánto tarda la suite del backend en GitHub; va con un ADR. Decisión del usuario: sí al CI, no al deploy automático (el deploy sigue a mano y con OK; a lo sumo, más adelante, un `scripts/deploy.sh` que corra desde su máquina). Todavía no se arranca (2026-10-13).
-- Limpieza y prolijidad de código de Min/tancada en Tancadas vs Jornal, minors de la revisión sin tocar: la palabra "rendimiento" sola, que el glosario pide evitar (ayuda, un test y un comentario); el redondeo repetido cuatro veces; nombres cortos de los acumuladores; `fmtMin` repite `fmt`; el encabezado sin `title` con la fórmula. El detalle va en los cuerpos del BK #98 y el FT #81 (2026-10-13).
-- Deuda previa vista en la revisión de Min/tancada: `GET /{preliq_id}/control-tancadas-jornal` sin `response_model` (regla 16 de GUIA-MODULOS); la tabla Tancadas vs Jornal desborda a lo ancho y cliente, finca y tarea no quedan fijas; encabezados numéricos a la derecha y celdas `mono` a la izquierda; `.pjAlto` con rgba sin token, el badge con `marginLeft` inline y `key={i}` en filas reordenables (2026-10-13).
-- Servidor, visto en el deploy del 2026-10-13 (detalle en `docs/DEPLOY.md`, local): nginx tiene dos configuraciones, la activa (con HTTPS y el límite de 12 MB) y una vieja sin HTTPS que figuraba como la instalada; dejar una sola, para que una reinstalación no pierda el HTTPS ni el límite. Borrar los respaldos viejos que quedaron en el servidor cuando ya no sirvan de vuelta atrás, primero la copia de la configuración del sistema del 2026-09-30, que puede tener contraseñas. Todo con OK, porque toca el servidor (el usuario lo dejó para más adelante, 2026-10-13).
-- Limpieza y prolijidad de código de Facturación FT-B (adjuntos en el front), minors de la revisión sin tocar: un 409 o 404 por cambios concurrentes no refresca la lista; Escape no cancela "Quitar", falta "Quitando…" y el foco se pierde si quitar falla; detalles de diseño (ubicación en pantallas anchas, "2 de 5" sin "adjuntos", "Cerrar" chico); colores rgba sin token en `Adjuntos.module.css`; textos y estilos repetidos, nombres ambiguos y la descarga repetida en tres módulos. El detalle va en el cuerpo del PR de FT-B (2026-10-13).
-- Deuda del núcleo del front vista en la revisión de FT-B: `.btn-danger` no llega al contraste mínimo (3,49:1, usado en 15 lugares) y `.btn` no tiene `:focus-visible` (2026-10-13).
-- Limpieza y prolijidad de código de Facturación BK-B (adjuntos), minors de la revisión sin tocar: código repetido (`quitar` y `ComprobantesService.borrar`, `ErrorAdjunto` y `_http_adjunto`, el `rsplit`, el prefijo del 503), `LARGO_NOMBRE` repite el 255 de la columna, mensaje por defecto sin uso, docstrings incompletos o que prometen de más, un test que no controla el bloqueo y dos de forma. El detalle va en el cuerpo del PR de BK-B. El usuario decidió que toda limpieza y prolijidad de código queda para después (2026-10-13).
-- Limpieza y prolijidad de código de Facturación BK-C (histórico), 9 minors de la revisión sin tocar: `pendiente_de_facturar` fuera de la comparación (sólo fallaría si cambia `SIN_NUMERO_FACTURADO_HASTA`); una planilla con la codificación de Windows termina en `UnicodeDecodeError` sin mensaje claro; nombres confusos; lecturas y firmas repetidas y `conteos()` a mano; `LARGO_TAREA_NOMBRE` repite el largo de la columna y una comparación usa `"-"` en vez de `SIN_NUMERO`; motivos como strings sueltos, clave "N"/"S" y la tarea sin maestro como dict; `leer_unidad` sólo delega; docstrings que citan pasos del plan; en el script, sumas y conteos a mano en vez de `Counter`. El detalle va en el cuerpo del BK #99 (2026-10-13).
-- En desarrollo, después de un rato sin uso, la primera lectura de la base de campo de Facturación (las tareas) tardó cerca de un minuto, como si esperara el `read_timeout` sobre una conexión muerta antes de reconectar; otra vez el proxy de Vite dejó colgados pedidos que nunca llegaron al backend. Se vio varias veces en el smoke de FT-A. Mirar en el VPS si la primera carga de Comprobantes tarda así antes de dárselo a las contadoras (2026-10-12).
-- Inicio del núcleo del front, deuda vista con `/impeccable audit` el 2026-10-12: el foco de la Tarjeta casi no se ve (halo y borde por debajo de 3:1, WCAG 1.4.11); el estado sin pantallas es un párrafo chico y gris, sin título ni a quién pedir acceso, y "Elegí dónde trabajar" se muestra igual (2026-10-12).
-- Deuda del núcleo del front vista en la revisión de la Facturación E1: el encabezado de la tabla de Mantenimiento no queda fijo (2026-10-11).
-- Ningún test controla que el rollback comentado de una migración no tenga `;`, salvo en Facturación (el test de la 002 lo controla para la 001 y la 002; BK #94): falta para el resto de los módulos (2026-10-11).
-- `docs/modulos/GUIA-MODULOS.md` (línea 139 y regla 8) no nombra `traducir_errores_externa()` del núcleo: minor 1 del BK #92 (2026-10-11).
-- Las vistas de `ws12` (marcada `historica`) no están en `000_esquema_base.sql`: una base nueva desde cero queda sin ellas. Visto al planear la regeneración del `000` (2026-10-11).
-- Modo Ver de Preliquidación (FT2 del esquema de permisos): los botones de escritura desaparecen sin aviso. Se evaluó una etiqueta tenue "Consulta" junto al título de Conceptos, Mantenimiento y el panel de la línea; el usuario decidió mirarlo primero en el sitio real y sumarla en un PR chico si confunde (2026-10-11).
-- Tests e2e con Playwright en el front (dependencia nueva, se aprueba antes): hoy no hay; lo de punta a punta es el smoke manual en el navegador, que sólo prueba lo que tocó la tarea. Pocos flujos críticos (login y que cada rol vea sólo sus pantallas, Revisión, Verificación, exportación), el grueso con la API simulada y uno o dos de sólo lectura contra `testing` (compartida y con datos que cambian: sin números fijos). Correrían en la fase 4 cuando la tarea toca el front y antes de cada deploy. Buen momento para arrancar: el esquema de permisos, por el caso de los roles (2026-10-11).
-- Deuda vista en la revisión del FT #65: los paneles de desvíos e indicadores de Gerencial no avisan si falla la carga (dicen "Ningún cliente con historial comparable"); los mensajes de axios llegan en inglés (`api.js`, núcleo); después de un guardado fallido del valor hora el campo conserva lo tipeado (2026-10-09).
-- 5 warnings `react-hooks/exhaustive-deps` en Terceros (`FiltroMultiple.jsx` y `Grilla.jsx`): deuda del FT #48, no bloquea.
-- `app/core/asistente.py` le da al modelo de ejemplo el botón "▶ Generar / Actualizar", con un símbolo que la interfaz ya no tiene; y `/gerencial` no está en las `pantallas` de `rutas.jsx` del front, así que el asistente no sabe en qué pantalla está el gerente. Código, fuera del BK #79 (2026-10-08).
-- El control de completitud cuenta una regla con precio <= 0 como completa (`reglas_completas` en `preliquidacion_service.py` y el SQL de faltantes de `precios.py`): sin urgencia, no hay reglas así en producción (2026-10-01).
-- Un id repetido en `linea_ids` agrega el concepto dos veces en esa línea (`agregar_concepto_masivo`, BK #67): deuda previa a ese PR, quedó fuera de su alcance.
-- Minors sin tocar de BK #70, FT #54 y BK #69: listados en sus entradas de la bitácora y en los cuerpos de los PRs.
-- Agrupar Verificación por (empresa, legajo): descartado salvo caso real; si aparece, se agrupa por CUIL (respaldo en ramas locales `respaldo/verificacion-empresa-legajo`, 2026-10-01).
-- `scripts/verificar_agents_comun.sh` compara el `AGENTS.md` del directorio de trabajo y no el stageado: un cambio sin `git add` también entra en la comparación. Sin urgencia, sólo afecta un aviso que no frena commits (deuda previa, vista en la revisión del BK #76, 2026-10-08).
-- Botón para descartar un "Posible duplicado" ya revisado: descartado por ahora (2 casos en 5 quincenas); se agrega si con el uso molesta (2026-10-07).
-- El endpoint `GET /preliquidacion/{id}/dashboard-verificacion` no lo usa ninguna pantalla desde la primera versión (Verificación calcula en el front; la función del front se borró el 2026-09-07): candidato a borrar o a usar en la refacción de UX/UI (2026-10-07).
-- `npm run lint` del front da 6 errores en `main`, todos en `.claude/hooks/ultimas-entregas.mjs` (`process` sin `globals.node`, FT #56): sin urgencia, no corre en la app (2026-10-07).
-- Verificación quedaba en "Cargando líneas…": en desarrollo, el proxy de Vite corta la descarga de las líneas (ECONNRESET) y deja el pedido colgado; en producción ese corte lo responde nginx y desde el FT #65 la pantalla lo avisa. Sin acción, salvo que se vea en el sitio real (2026-10-09).
-- Deudas menores del incidente del 2026-09-18 al 2026-09-23 (candado, quincena cruda, parámetros de lectura): ver las entradas de esas fechas en la bitácora.
+- Servidor (detalle en `docs/DEPLOY.md`, local), todo con OK porque toca el servidor: dejar una sola
+  configuración de nginx, la activa con HTTPS y el límite de 12 MB, para que una reinstalación no los
+  pierda; y borrar los respaldos viejos que ya no sirvan de vuelta atrás, primero la copia de la
+  configuración del sistema del 2026-09-30, que puede tener contraseñas (visto en el deploy del
+  2026-10-13; el usuario lo dejó para más adelante).
