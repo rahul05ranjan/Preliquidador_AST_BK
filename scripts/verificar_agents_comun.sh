@@ -40,8 +40,16 @@ done
 [ -f "$hermano/AGENTS.md" ] || falla "el repo hermano $hermano no tiene AGENTS.md"
 
 bloque() { sed -n '/<!-- comun:inicio/,/<!-- comun:fin -->/p' "$1" | tr -d '\r'; }
-a=$(mktemp); b=$(mktemp)
-bloque "$raiz/AGENTS.md" > "$a"; bloque "$hermano/AGENTS.md" > "$b"
+a=$(mktemp); b=$(mktemp); propio=$(mktemp)
+# El bloque propio se lee del índice (lo que entra en el commit), no del directorio
+# de trabajo: un cambio sin `git add` no debe entrar en la comparación. Sin versión
+# en el índice (AGENTS.md nuevo y sin agregar) se cae al archivo del disco.
+if git show :AGENTS.md > "$propio" 2>/dev/null; then
+  bloque "$propio" > "$a"
+else
+  bloque "$raiz/AGENTS.md" > "$a"
+fi
+bloque "$hermano/AGENTS.md" > "$b"
 if diff -u "$a" "$b" > "$a.diff"; then rm -f "$a" "$b" "$a.diff"; exit 0; fi
 echo "El bloque común de AGENTS.md difiere del repo hermano ($hermano):" >&2
 cat "$a.diff" >&2; rm -f "$a" "$b" "$a.diff"; exit 1
