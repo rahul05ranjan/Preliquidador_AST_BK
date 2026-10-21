@@ -136,7 +136,7 @@ backend_preliquidacion/
 │   ├── main.py                       # arranque; registra auth, los routers de activos() y asistente
 │   ├── core/                         # NÚCLEO COMPARTIDO
 │   │   ├── config.py                 # settings
-│   │   ├── database.py               # las 3 conexiones y los get_db_*
+│   │   ├── database.py               # las 3 conexiones, los get_db_*, ExternaNoDisponible y traducir_errores_externa (envuelve las consultas a la base de campo y traduce sus cortes a un mensaje entendible)
 │   │   ├── models.py                 # Usuario, RolUsuario, Rol, RolPermiso, UsuarioRol (ADR-0020)
 │   │   ├── auth.py                   # usuario actual, login/me/logout/password
 │   │   ├── identidad.py              # CUIL como identidad (PR 5): normalizar_cuil, email_de_cuil, cuil_de_email
@@ -272,7 +272,7 @@ Estas reglas son lo que se revisa en cada PR. No son sugerencias.
 5. **Todas las tablas del módulo llevan el prefijo del módulo**: `terceros_viaje`, `terceros_tarifa`, etc. El prefijo es la frontera visible en la base.
 6. **Un módulo escribe solo en sus tablas.** Nunca en tablas de otro módulo ni en las del núcleo (usuarios y roles) salvo a través de los servicios del núcleo.
 7. **Las bases Externa y Sueldos son de solo lectura, siempre.** Ni un `INSERT`, ni un `UPDATE`, ni una tabla temporal. Si el módulo necesita guardar algo derivado de esos datos, lo guarda en sus propias tablas en la base Propia.
-8. **Las consultas a bases externas son SQL crudo con parámetros** (`text()` de SQLAlchemy con `:parametro`), nunca strings concatenados. No se mapean tablas ajenas con el ORM. Van en `consulta_externa.py` del módulo.
+8. **Las consultas a bases externas son SQL crudo con parámetros** (`text()` de SQLAlchemy con `:parametro`), nunca strings concatenados. No se mapean tablas ajenas con el ORM. Van en `consulta_externa.py` del módulo, envueltas en `traducir_errores_externa()` del núcleo (`app/core/database.py`): un corte, timeout o acceso rechazado de la base de campo se traduce a `ExternaNoDisponible` con un mensaje que la persona entienda, igual en todas las pantallas (la reexporta cada `services/consulta_externa.py`).
 9. **Nada de escribir sobre la base con el ORM en `create_all`.** `main.py` no lo hace más (se sacó en el PR 3 de la etapa 0, 2026-09-08): **la fuente de verdad del esquema es la migración SQL**, no el modelo. Toda tabla o columna nueva tiene su archivo en `migrations/<modulo>/`.
 
 ### 4.3 Migraciones
